@@ -1,0 +1,42 @@
+# ── Python ──────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+
+# ── Virtual environments ─────────────────────────────────────────────────────
+.venv/
+venv/
+env/
+ENV/
+
+# ── PyTorch / training artefacts ─────────────────────────────────────────────
+checkpoints/*.pt
+logs/
+*.pt
+*.bin
+
+# ── Data (large files — download locally via data/prepare.py) ────────────────
+data/raw/
+data/processed/
+
+# ── Jupyter / IPython ────────────────────────────────────────────────────────
+.ipynb_checkpoints/
+*.ipynb
+
+# ── OS ───────────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+
+# ── Editors ──────────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+
+# ── W&B ──────────────────────────────────────────────────────────────────────
+wandb/
