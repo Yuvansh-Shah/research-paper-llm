@@ -1,176 +1,217 @@
-"""Data download and pre-processing script.
-
-Downloads a text corpus (Wikipedia by default), tokenises it with the
-GPT-2 BPE tokeniser via ``tiktoken``, and writes train/val split as
-memory-mapped uint16 ``.bin`` files ready for :class:`training.dataset.TokenDataset`.
-
-Usage::
-
-    # Download and tokenise English Wikipedia (subset)
-    python data/prepare.py --source wikipedia --lang en --output_dir data/processed
-
-    # Tokenise a local text file
-    python data/prepare.py --source file --input_path my_corpus.txt \\
-        --output_dir data/processed
-
-    # Use a Hugging Face dataset
-    python data/prepare.py --source hf --hf_dataset wikitext \\
-        --hf_name wikitext-103-raw-v1 --output_dir data/processed
-"""
-
 from __future__ import annotations
 
 import argparse
-import os
+import re
 import sys
-from typing import Iterable
+from pathlib import Path
+from typing import Callable
 
 import numpy as np
+import tiktoken
+
+try:
+    import wikipediaapi
+except ImportError as exc:  # pragma: no cover - import error path
+    raise RuntimeError(
+        "wikipedia-api is required. Install dependencies from requirements.txt"
+    ) from exc
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+RAW_DIR = PROJECT_ROOT / "data" / "raw"
+PROCESSED_DIR = PROJECT_ROOT / "data" / "processed"
+DEFAULT_RAW = RAW_DIR / "geography_wikipedia.txt"
+TRAIN_BIN = PROCESSED_DIR / "train.bin"
+VAL_BIN = PROCESSED_DIR / "val.bin"
+
+CITATION_RE = re.compile(r"\[\d+\]")
+TEMPLATE_RE = re.compile(r"\{\|.*?\|\}", re.DOTALL)
+TAG_RE = re.compile(r"<[^>]+>")
+WHITESPACE_RE = re.compile(r"\s+")
+SECTION_HEADER_RE = re.compile(
+    r"^\s*==+\s*(References|External links|See also|Notes)\s*==+\s*$",
+    flags=re.IGNORECASE | re.MULTILINE,
+)
+
+TOPIC_SEED_PAGES = [
+    "Geography",
+    "Physical geography",
+    "Human geography",
+    "Geology",
+    "Climatology",
+    "Hydrology",
+    "Geomorphology",
+    "Biogeography",
+    "Cartography",
+    "Earth",
+    "Plate tectonics",
+    "Atmosphere of Earth",
+    "Oceanography",
+    "Mountain",
+    "River",
+    "Desert",
+    "Rainforest",
+    "Climate change",
+    "Coast",
+    "India",
+    "Amazon rainforest",
+]
+GEOGRAPHY_KEYWORDS = {
+    "geograph",
+    "climate",
+    "earth",
+    "ocean",
+    "river",
+    "mountain",
+    "desert",
+    "forest",
+}
+MIN_PAGE_LENGTH = 200
+TRAIN_SPLIT_RATIO = 0.95
 
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-def _get_tokeniser():
-    """Return a tiktoken GPT-2 encoder (lazily imported)."""
-    try:
-        import tiktoken  # noqa: PLC0415
-    except ImportError:
-        sys.exit("tiktoken is required: pip install tiktoken")
-    return tiktoken.get_encoding("gpt2")
+def clean_wikipedia_text(text: str) -> str:
+    text = TEMPLATE_RE.sub(" ", text)
+    text = CITATION_RE.sub("", text)
+    text = TAG_RE.sub(" ", text)
+    text = SECTION_HEADER_RE.sub("", text)
+    text = WHITESPACE_RE.sub(" ", text)
+    return text.strip()
 
 
-def _encode_texts(texts: Iterable[str], enc) -> np.ndarray:
-    """Encode an iterable of strings and concatenate into a uint16 array."""
-    all_ids: list[int] = []
-    eot = enc.eot_token  # end-of-text sentinel between documents
-    for text in texts:
-        all_ids.extend(enc.encode_ordinary(text))
-        all_ids.append(eot)
-    return np.array(all_ids, dtype=np.uint16)
+def collect_geography_corpus(target_mb: int, output_path: Path) -> str:
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    target_chars = target_mb * 1024 * 1024
 
-
-def _write_bin(ids: np.ndarray, path: str) -> None:
-    """Write a uint16 token array to *path* as a memory-mapped .bin file."""
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    fp = np.memmap(path, dtype=np.uint16, mode="w+", shape=(len(ids),))
-    fp[:] = ids
-    fp.flush()
-    print(f"  Wrote {len(ids):,} tokens → {path}")
-
-
-# ---------------------------------------------------------------------------
-# Data sources
-# ---------------------------------------------------------------------------
-
-def _load_file(input_path: str) -> list[str]:
-    with open(input_path, encoding="utf-8") as fh:
-        return [fh.read()]
-
-
-def _load_hf_dataset(hf_dataset: str, hf_name: str, split: str) -> list[str]:
-    try:
-        from datasets import load_dataset  # noqa: PLC0415
-    except ImportError:
-        sys.exit("datasets is required: pip install datasets")
-    ds = load_dataset(hf_dataset, hf_name, split=split, trust_remote_code=False)
-    # Most HF text datasets have a 'text' column.
-    col = "text" if "text" in ds.column_names else ds.column_names[0]
-    return [row for row in ds[col] if row and row.strip()]
-
-
-def _load_wikipedia(lang: str = "en", num_articles: int = 50_000) -> list[str]:
-    """Stream *num_articles* articles from the Wikipedia HF dataset."""
-    try:
-        from datasets import load_dataset  # noqa: PLC0415
-    except ImportError:
-        sys.exit("datasets is required: pip install datasets")
-    ds = load_dataset(
-        "wikipedia",
-        f"20220301.{lang}",
-        split="train",
-        streaming=True,
-        trust_remote_code=False,
+    wiki = wikipediaapi.Wikipedia(
+        language="en",
+        user_agent="CustomLM-dataset-prep/1.0 (https://github.com/yuvansh12/Research-paper-maker)",
+        extract_format=wikipediaapi.ExtractFormat.WIKI,
     )
-    texts: list[str] = []
-    for i, row in enumerate(ds):
-        if i >= num_articles:
+
+    seen_titles: set[str] = set()
+    chunks: list[str] = []
+    total_chars = 0
+
+    def add_page(title: str) -> None:
+        nonlocal total_chars
+        if title in seen_titles or total_chars >= target_chars:
+            return
+        page = wiki.page(title)
+        if not page.exists():
+            return
+        seen_titles.add(title)
+        cleaned = clean_wikipedia_text(page.text)
+        if len(cleaned) < MIN_PAGE_LENGTH:
+            return
+        chunks.append(cleaned)
+        total_chars += len(cleaned)
+        print(f"[prepare] collected '{title}' ({len(cleaned)} chars), total={total_chars}")
+
+    for seed in TOPIC_SEED_PAGES:
+        add_page(seed)
+        if total_chars >= target_chars:
             break
-        texts.append(row["text"])
-    return texts
+        page = wiki.page(seed)
+        if page.exists():
+            for link_title in page.links.keys():
+                if total_chars >= target_chars:
+                    break
+                lowered = link_title.lower()
+                if any(keyword in lowered for keyword in GEOGRAPHY_KEYWORDS):
+                    add_page(link_title)
+
+    combined = "\n\n".join(chunks)
+    output_path.write_text(combined, encoding="utf-8")
+    print(f"[prepare] raw corpus saved to {output_path} ({len(combined)} chars)")
+    return combined
 
 
-# ---------------------------------------------------------------------------
-# Main
-# ---------------------------------------------------------------------------
-
-def parse_args() -> argparse.Namespace:
-    p = argparse.ArgumentParser(description="Tokenise text corpus for CustomLM pre-training")
-    p.add_argument("--source", choices=["file", "hf", "wikipedia"], default="wikipedia",
-                   help="Data source")
-    # File source
-    p.add_argument("--input_path", default=None,
-                   help="Path to local text file (--source file)")
-    # HF source
-    p.add_argument("--hf_dataset", default="wikitext",
-                   help="Hugging Face dataset name (--source hf)")
-    p.add_argument("--hf_name", default="wikitext-103-raw-v1",
-                   help="Hugging Face dataset config (--source hf)")
-    # Wikipedia source
-    p.add_argument("--lang", default="en",
-                   help="Wikipedia language (--source wikipedia)")
-    p.add_argument("--num_articles", type=int, default=50_000,
-                   help="Number of Wikipedia articles to download")
-    # Common
-    p.add_argument("--output_dir", default="data/processed",
-                   help="Directory for output .bin files")
-    p.add_argument("--val_fraction", type=float, default=0.05,
-                   help="Fraction of tokens reserved for validation")
-    return p.parse_args()
+def _encode_with_gpt2_tiktoken(text: str) -> list[int]:
+    try:
+        enc = tiktoken.get_encoding("gpt2")
+        return enc.encode_ordinary(text)
+    except Exception as exc:
+        raise RuntimeError(
+            "Failed to load tiktoken GPT-2 BPE encoder. "
+            "Likely cause: first-run tokenizer asset download is blocked/offline. "
+            "Fix: run once with internet access to cache tokenizer files, then rerun "
+            "`python data/prepare.py`."
+        ) from exc
 
 
-def main() -> None:
-    args = parse_args()
-    enc = _get_tokeniser()
-    print(f"Tokeniser: {enc.name}  (vocab size {enc.n_vocab})")
+def tokenize_and_split(
+    text: str,
+    train_path: Path,
+    val_path: Path,
+    encode_fn: Callable[[str], list[int]] | None = None,
+) -> tuple[int, int]:
+    """Tokenize text and split sequentially into train/val (95/5)."""
+    token_ids = (encode_fn or _encode_with_gpt2_tiktoken)(text)
+    tokens = np.array(token_ids, dtype=np.uint16)
+    if tokens.size == 0:
+        raise ValueError("No tokens produced from dataset text.")
+    split_idx = int(tokens.size * TRAIN_SPLIT_RATIO)
+    train_tokens = tokens[:split_idx]
+    val_tokens = tokens[split_idx:]
+    train_tokens.tofile(train_path)
+    val_tokens.tofile(val_path)
+    return int(train_tokens.size), int(val_tokens.size)
 
-    # ------------------------------------------------------------------
-    # Load raw texts
-    # ------------------------------------------------------------------
-    print(f"Loading data source: {args.source}")
-    if args.source == "file":
-        if not args.input_path:
-            sys.exit("--input_path required for --source file")
-        texts = _load_file(args.input_path)
-    elif args.source == "hf":
-        texts = _load_hf_dataset(args.hf_dataset, args.hf_name, split="train")
-    else:  # wikipedia
-        texts = _load_wikipedia(args.lang, args.num_articles)
 
-    print(f"Loaded {len(texts):,} documents")
+def verify_dataset_readable(train_path: Path, val_path: Path) -> None:
+    from training.dataset import MemmapDataset
 
-    # ------------------------------------------------------------------
-    # Tokenise
-    # ------------------------------------------------------------------
-    print("Tokenising …")
-    ids = _encode_texts(texts, enc)
-    print(f"Total tokens: {len(ids):,}")
+    train_ds = MemmapDataset(train_path)
+    val_ds = MemmapDataset(val_path)
+    if len(train_ds) == 0 or len(val_ds) == 0:
+        raise RuntimeError("Dataset verification failed: one split is empty.")
+    _ = train_ds[0]
+    _ = val_ds[0]
+    print(f"[prepare] verification OK: train={len(train_ds)} val={len(val_ds)}")
 
-    # ------------------------------------------------------------------
-    # Train / val split
-    # ------------------------------------------------------------------
-    n_val = max(1, int(len(ids) * args.val_fraction))
-    train_ids = ids[:-n_val]
-    val_ids = ids[-n_val:]
 
-    # ------------------------------------------------------------------
-    # Write .bin files
-    # ------------------------------------------------------------------
-    _write_bin(train_ids, os.path.join(args.output_dir, "train.bin"))
-    _write_bin(val_ids, os.path.join(args.output_dir, "val.bin"))
-    print("Done.")
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Prepare Wikipedia geography dataset.")
+    parser.add_argument("--target-mb", type=int, default=200, help="Approximate raw text character-budget target in MiB units (1 MiB = 1,048,576 characters).")
+    parser.add_argument("--raw-output", type=Path, default=DEFAULT_RAW, help="Path for cleaned raw text output.")
+    parser.add_argument("--input-text-file", type=Path, default=None, help="Optional existing text file; skips download if provided.")
+    return parser.parse_args(argv)
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = parse_args(argv)
+    RAW_DIR.mkdir(parents=True, exist_ok=True)
+    PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
+
+    print("[prepare] starting geography corpus preparation")
+    if args.input_text_file is not None:
+        text = args.input_text_file.read_text(encoding="utf-8")
+        args.raw_output.write_text(clean_wikipedia_text(text), encoding="utf-8")
+        text = args.raw_output.read_text(encoding="utf-8")
+        print(f"[prepare] loaded existing text from {args.input_text_file}")
+    else:
+        try:
+            text = collect_geography_corpus(target_mb=args.target_mb, output_path=args.raw_output)
+        except Exception as exc:
+            print(
+                "[prepare] error: failed to download Wikipedia geography corpus. "
+                "Likely cause: no internet access or Wikipedia API block. "
+                "Fix: check connectivity, then rerun `python data/prepare.py --target-mb 200`.",
+                file=sys.stderr,
+            )
+            return 1
+    try:
+        train_count, val_count = tokenize_and_split(text, TRAIN_BIN, VAL_BIN)
+    except RuntimeError as exc:
+        print(f"[prepare] error: {exc}", file=sys.stderr)
+        return 1
+    print(f"[prepare] token counts: train={train_count} val={val_count}")
+    verify_dataset_readable(TRAIN_BIN, VAL_BIN)
+    print("[prepare] completed successfully")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main(sys.argv[1:]))
