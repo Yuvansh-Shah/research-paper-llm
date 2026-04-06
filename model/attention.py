@@ -65,8 +65,8 @@ class CausalSelfAttention(nn.Module):
         v = v.view(B, T, self.n_heads, self.head_dim).transpose(1, 2)
 
         # Scaled dot-product attention.
-        scale = math.sqrt(self.head_dim)
-        attn = (q @ k.transpose(-2, -1)) / scale  # (B, nh, T, T)
+        attention_scale = math.sqrt(self.head_dim)
+        attn = (q @ k.transpose(-2, -1)) / attention_scale  # (B, nh, T, T)
 
         # Apply causal mask — set future positions to -inf so softmax → 0.
         attn = attn.masked_fill(~self.bias[:, :, :T, :T], float("-inf"))

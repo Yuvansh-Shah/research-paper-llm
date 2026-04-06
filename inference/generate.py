@@ -55,9 +55,10 @@ def _top_p_filter(logits: Tensor, p: float) -> Tensor:
     if p >= 1.0:
         return logits
     sorted_logits, sorted_indices = torch.sort(logits, dim=-1, descending=True)
-    cumulative_probs = torch.cumsum(F.softmax(sorted_logits, dim=-1), dim=-1)
+    sorted_probs = F.softmax(sorted_logits, dim=-1)
+    cumulative_probs = torch.cumsum(sorted_probs, dim=-1)
     # Remove tokens with cumulative prob above threshold *after* including current.
-    sorted_indices_to_remove = cumulative_probs - F.softmax(sorted_logits, dim=-1) > p
+    sorted_indices_to_remove = cumulative_probs - sorted_probs > p
     sorted_logits = sorted_logits.masked_fill(sorted_indices_to_remove, float("-inf"))
     # Scatter back to original indexing.
     return logits.scatter(1, sorted_indices, sorted_logits)
