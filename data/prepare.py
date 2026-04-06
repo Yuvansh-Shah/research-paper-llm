@@ -29,6 +29,10 @@ CITATION_RE = re.compile(r"\[\d+\]")
 TEMPLATE_RE = re.compile(r"\{\|.*?\|\}", re.DOTALL)
 TAG_RE = re.compile(r"<[^>]+>")
 WHITESPACE_RE = re.compile(r"\s+")
+SECTION_HEADER_RE = re.compile(
+    r"^\s*==+\s*(References|External links|See also|Notes)\s*==+\s*$",
+    flags=re.IGNORECASE | re.MULTILINE,
+)
 
 TOPIC_SEED_PAGES = [
     "Geography",
@@ -53,13 +57,23 @@ TOPIC_SEED_PAGES = [
     "India",
     "Amazon rainforest",
 ]
+GEOGRAPHY_KEYWORDS = {
+    "geograph",
+    "climate",
+    "earth",
+    "ocean",
+    "river",
+    "mountain",
+    "desert",
+    "forest",
+}
 
 
 def clean_wikipedia_text(text: str) -> str:
     text = TEMPLATE_RE.sub(" ", text)
     text = CITATION_RE.sub("", text)
     text = TAG_RE.sub(" ", text)
-    text = re.sub(r"^\s*==+\s*(References|External links|See also|Notes)\s*==+\s*$", "", text, flags=re.IGNORECASE | re.MULTILINE)
+    text = SECTION_HEADER_RE.sub("", text)
     text = WHITESPACE_RE.sub(" ", text)
     return text.strip()
 
@@ -70,7 +84,7 @@ def collect_geography_corpus(target_mb: int, output_path: Path) -> str:
 
     wiki = wikipediaapi.Wikipedia(
         language="en",
-        user_agent="CustomLM-dataset-prep/1.0 (https://github.com/yuvansh12/Research-paper-maker-)",
+        user_agent="CustomLM-dataset-prep/1.0 (https://github.com/yuvansh12/Research-paper-maker)",
         extract_format=wikipediaapi.ExtractFormat.WIKI,
     )
 
@@ -102,7 +116,8 @@ def collect_geography_corpus(target_mb: int, output_path: Path) -> str:
             for link_title in page.links.keys():
                 if total_chars >= target_chars:
                     break
-                if "geograph" in link_title.lower() or "climate" in link_title.lower() or "earth" in link_title.lower() or "ocean" in link_title.lower() or "river" in link_title.lower() or "mountain" in link_title.lower() or "desert" in link_title.lower() or "forest" in link_title.lower():
+                lowered = link_title.lower()
+                if any(keyword in lowered for keyword in GEOGRAPHY_KEYWORDS):
                     add_page(link_title)
 
     combined = "\n\n".join(chunks)
