@@ -67,6 +67,8 @@ GEOGRAPHY_KEYWORDS = {
     "desert",
     "forest",
 }
+MIN_PAGE_LENGTH = 200
+TRAIN_SPLIT_RATIO = 0.95
 
 
 def clean_wikipedia_text(text: str) -> str:
@@ -101,7 +103,7 @@ def collect_geography_corpus(target_mb: int, output_path: Path) -> str:
             return
         seen_titles.add(title)
         cleaned = clean_wikipedia_text(page.text)
-        if len(cleaned) < 200:
+        if len(cleaned) < MIN_PAGE_LENGTH:
             return
         chunks.append(cleaned)
         total_chars += len(cleaned)
@@ -149,7 +151,7 @@ def tokenize_and_split(
     tokens = np.array(token_ids, dtype=np.uint16)
     if tokens.size == 0:
         raise ValueError("No tokens produced from dataset text.")
-    split_idx = int(tokens.size * 0.95)
+    split_idx = int(tokens.size * TRAIN_SPLIT_RATIO)
     train_tokens = tokens[:split_idx]
     val_tokens = tokens[split_idx:]
     train_tokens.tofile(train_path)
