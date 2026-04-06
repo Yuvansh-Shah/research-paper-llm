@@ -24,7 +24,7 @@ class PreparePipelineTests(unittest.TestCase):
                 "The geography of India includes plains and plateaus.",
                 train,
                 val,
-                encode_fn=lambda s: [ord(ch) % 65535 for ch in s],
+                encode_fn=lambda s: [ord(ch) % 65536 for ch in s],
             )
             self.assertGreater(train_n, 0)
             self.assertGreater(val_n, 0)

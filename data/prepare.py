@@ -147,6 +147,7 @@ def tokenize_and_split(
     val_path: Path,
     encode_fn: Callable[[str], list[int]] | None = None,
 ) -> tuple[int, int]:
+    """Tokenize text and split sequentially into train/val (95/5)."""
     token_ids = (encode_fn or _encode_with_gpt2_tiktoken)(text)
     tokens = np.array(token_ids, dtype=np.uint16)
     if tokens.size == 0:
@@ -173,7 +174,7 @@ def verify_dataset_readable(train_path: Path, val_path: Path) -> None:
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Prepare Wikipedia geography dataset.")
-    parser.add_argument("--target-mb", type=int, default=200, help="Approximate raw text size target in MB.")
+    parser.add_argument("--target-mb", type=int, default=200, help="Approximate raw text character-budget target in MiB units (1 MiB = 1,048,576 characters).")
     parser.add_argument("--raw-output", type=Path, default=DEFAULT_RAW, help="Path for cleaned raw text output.")
     parser.add_argument("--input-text-file", type=Path, default=None, help="Optional existing text file; skips download if provided.")
     return parser.parse_args(argv)
@@ -200,7 +201,7 @@ def main(argv: list[str] | None = None) -> int:
                 "Fix: check connectivity, then rerun `python data/prepare.py --target-mb 200`.",
                 file=sys.stderr,
             )
-            raise
+            return 1
     try:
         train_count, val_count = tokenize_and_split(text, TRAIN_BIN, VAL_BIN)
     except RuntimeError as exc:

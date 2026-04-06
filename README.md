@@ -13,6 +13,7 @@ What it does:
 - cleans text (citation brackets, simple table/template blocks, HTML-like tags, whitespace),
 - tokenizes with GPT-2 BPE (`tiktoken`),
 - writes `data/processed/train.bin` (95%) and `data/processed/val.bin` (5%) as `uint16`,
+- split is sequential (no shuffle) to preserve streaming-friendly corpus order,
 - verifies both `.bin` files are readable through `training/dataset.py`,
 - prints final split token counts.
 
