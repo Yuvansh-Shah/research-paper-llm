@@ -1,0 +1,4 @@
+Title: Scaling Tokenization Strategies for Scientific Abstract Modeling Abstract:
+Title: Domain-Adaptive Pretraining for Mixed DBLP and arXiv Corpora Abstract:
+Method: We train a decoder-only transformer on a mixed DBLP and arXiv corpus using
+Discussion: The difference between DBLP and arXiv validation loss suggests

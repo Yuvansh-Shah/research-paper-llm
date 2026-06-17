@@ -1,0 +1,56 @@
+{
+  "tokenizer": {
+    "name": "tmp-smoke-bpe8k",
+    "backend": "hf_tokenizers",
+    "vocab_size": 8000,
+    "eos_token_id": 1,
+    "tokenizer_path": "C:\\Users\\yuvan\\OneDrive - Dhirubhai Ambani International School\\Desktop\\jainapp\\Research-paper-maker-\\data\\tokenizers\\tmp_smoke\\tokenizer.json",
+    "eos_token": "<|endoftext|>",
+    "unk_token": "[UNK]",
+    "bos_token": null,
+    "pad_token": null,
+    "special_tokens": [
+      "[UNK]",
+      "<|endoftext|>"
+    ],
+    "legacy": false
+  },
+  "training": {
+    "model_type": "bpe",
+    "vocab_size": 8000,
+    "min_frequency": 2,
+    "max_records_per_source": 300,
+    "quality_config": {
+      "min_title_chars": 12,
+      "min_abstract_chars": 80,
+      "max_abstract_chars": 12000,
+      "min_alpha_ratio": 0.6,
+      "max_junk_ratio": 0.12,
+      "max_repeated_char_ratio": 0.15,
+      "allowed_category_prefixes": []
+    },
+    "formatting_config": {
+      "include_year": true,
+      "include_venue": true,
+      "include_categories": true,
+      "include_authors": false
+    },
+    "stats": {
+      "seen_records": 600,
+      "kept_records": 585,
+      "dropped_records": 15,
+      "seen_by_source": {
+        "dblp": 300,
+        "arxiv": 300
+      },
+      "kept_by_source": {
+        "dblp": 288,
+        "arxiv": 297
+      }
+    },
+    "inputs": {
+      "dblp": "C:\\Users\\yuvan\\OneDrive - Dhirubhai Ambani International School\\Desktop\\jainapp\\Research-paper-maker-\\dblp-v10.csv",
+      "arxiv": "C:\\Users\\yuvan\\OneDrive - Dhirubhai Ambani International School\\Desktop\\jainapp\\Research-paper-maker-\\arxiv-metadata-oai-snapshot.json"
+    }
+  }
+}

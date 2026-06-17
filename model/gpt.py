@@ -1,6 +1,7 @@
 """Full GPT-style decoder-only language model."""
 
 import math
+from typing import Optional
 
 import torch
 import torch.nn as nn
@@ -147,8 +148,13 @@ class GPT(nn.Module):
     # Checkpoint helpers
     # ------------------------------------------------------------------
 
-    def save_checkpoint(self, path: str, step: int, optimizer_state: dict | None = None) -> None:
-        """Save model checkpoint to *path*."""
+    def build_checkpoint_payload(
+        self,
+        step: int,
+        optimizer_state: dict | None = None,
+        *,
+        extra_metadata: Optional[dict] = None,
+    ) -> dict:
         payload: dict = {
             "step": step,
             "config": self.config.__dict__,
@@ -156,13 +162,42 @@ class GPT(nn.Module):
         }
         if optimizer_state is not None:
             payload["optimizer_state_dict"] = optimizer_state
-        torch.save(payload, path)
+        if extra_metadata:
+            payload.update(extra_metadata)
+        return payload
+
+    def save_checkpoint(
+        self,
+        path: str,
+        step: int,
+        optimizer_state: dict | None = None,
+        *,
+        extra_metadata: Optional[dict] = None,
+    ) -> None:
+        """Save model checkpoint to *path*."""
+        torch.save(
+            self.build_checkpoint_payload(
+                step,
+                optimizer_state,
+                extra_metadata=extra_metadata,
+            ),
+            path,
+        )
 
     @classmethod
     def from_checkpoint(cls, path: str, device: str = "cpu") -> "GPT":
         """Load a GPT model from a checkpoint file."""
         payload = torch.load(path, map_location=device, weights_only=False)
-        config = GPTConfig(**payload["config"])
+        
+        # Handle both dict and GPTConfig object formats
+        config_data = payload["config"]
+        if isinstance(config_data, GPTConfig):
+            config = config_data
+        elif isinstance(config_data, dict):
+            config = GPTConfig(**config_data)
+        else:
+            raise ValueError(f"Unknown config type in checkpoint: {type(config_data)}")
+        
         model = cls(config)
         model.load_state_dict(payload["model_state_dict"])
         return model

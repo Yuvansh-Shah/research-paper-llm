@@ -1,48 +1,34 @@
-"""Text generation CLI for CustomLM.
-
-Usage::
-
-    python inference/generate.py \\
-        --checkpoint checkpoints/final.pt \\
-        --prompt "The history of artificial intelligence" \\
-        --max_tokens 200 \\
-        --temperature 0.8 \\
-        --top_p 0.9
-
-Sampling strategies supported
-------------------------------
-* **greedy** — always picks the highest-probability token
-* **temperature** — scales logits before sampling
-* **top-k** — keeps only the top-k tokens before sampling
-* **top-p (nucleus)** — keeps the smallest set of tokens whose cumulative
-  probability ≥ p, then samples from that set
-"""
+"""Text generation CLI for CustomLM checkpoints."""
 
 from __future__ import annotations
 
 import argparse
-import sys
 import time
+from pathlib import Path
+from typing import Optional
 
 import torch
 import torch.nn.functional as F
 from torch import Tensor
 
+import sys
 
-def _load_tokeniser():
-    try:
-        import tiktoken  # noqa: PLC0415
-    except ImportError:
-        sys.exit("tiktoken is required: pip install tiktoken")
-    return tiktoken.get_encoding("gpt2")
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
+from config_utils import load_config_defaults
+from model.config import GPTConfig
+from model.gpt import GPT
+from tokenization import (
+    default_gpt2_tokenizer_spec,
+    load_runtime_tokenizer,
+    load_tokenizer_spec,
+    load_tokenizer_spec_from_checkpoint,
+)
 
-# ---------------------------------------------------------------------------
-# Sampling helpers
-# ---------------------------------------------------------------------------
 
 def _top_k_filter(logits: Tensor, k: int) -> Tensor:
-    """Zero out all logits except the top-k."""
     if k <= 0:
         return logits
     top_k_vals, _ = torch.topk(logits, k)
@@ -51,22 +37,30 @@ def _top_k_filter(logits: Tensor, k: int) -> Tensor:
 
 
 def _top_p_filter(logits: Tensor, p: float) -> Tensor:
-    """Zero out all logits outside the nucleus (top-p set)."""
     if p >= 1.0:
         return logits
     sorted_logits, sorted_indices = torch.sort(logits, dim=-1, descending=True)
     sorted_probs = F.softmax(sorted_logits, dim=-1)
     cumulative_probs = torch.cumsum(sorted_probs, dim=-1)
-    # Remove tokens with cumulative prob above threshold *after* including current.
     sorted_indices_to_remove = cumulative_probs - sorted_probs > p
     sorted_logits = sorted_logits.masked_fill(sorted_indices_to_remove, float("-inf"))
-    # Scatter back to original indexing.
     return logits.scatter(1, sorted_indices, sorted_logits)
 
 
-# ---------------------------------------------------------------------------
-# Main generate function
-# ---------------------------------------------------------------------------
+def load_model_bundle(checkpoint_path: str | Path, device: str = "cpu") -> tuple[GPT, GPTConfig, dict]:
+    payload = torch.load(checkpoint_path, map_location=device, weights_only=False)
+    config_data = payload["config"]
+    if isinstance(config_data, GPTConfig):
+        config = config_data
+    elif isinstance(config_data, dict):
+        config = GPTConfig(**config_data)
+    else:
+        raise ValueError(f"Unknown config type in checkpoint: {type(config_data)}")
+
+    model = GPT(config)
+    model.load_state_dict(payload["model_state_dict"])
+    return model, config, payload
+
 
 @torch.no_grad()
 def generate(
@@ -78,39 +72,17 @@ def generate(
     top_p: float = 1.0,
     greedy: bool = False,
 ) -> Tensor:
-    """Autoregressively generate tokens from *model*.
-
-    Args:
-        model: A :class:`model.gpt.GPT` instance in eval mode.
-        idx: Seed token IDs of shape ``(1, T)``.
-        max_new_tokens: Number of new tokens to generate.
-        temperature: Logit scaling factor.  Values < 1 make the
-            distribution sharper; values > 1 make it flatter.
-        top_k: If > 0, restrict sampling to the top-k tokens.
-        top_p: Nucleus sampling probability threshold.
-        greedy: If ``True``, always pick the argmax token (ignores
-            temperature / top-k / top-p).
-
-    Returns:
-        Tensor of shape ``(1, T + max_new_tokens)`` containing the full
-        sequence including the seed.
-    """
     context_length = model.config.context_length
 
     for _ in range(max_new_tokens):
-        # Crop to the model's context window.
         idx_cond = idx[:, -context_length:]
-
-        # Forward pass — returns logits for the last position only.
-        logits, _ = model(idx_cond)          # (1, 1, vocab_size)
-        logits = logits[:, -1, :]            # (1, vocab_size)
+        logits, _ = model(idx_cond)
+        logits = logits[:, -1, :]
 
         if greedy:
             next_token = logits.argmax(dim=-1, keepdim=True)
         else:
-            # Apply temperature scaling.
             logits = logits / max(temperature, 1e-8)
-            # Apply top-k and top-p filtering.
             logits = _top_k_filter(logits, top_k)
             logits = _top_p_filter(logits, top_p)
             probs = F.softmax(logits, dim=-1)
@@ -121,55 +93,50 @@ def generate(
     return idx
 
 
-# ---------------------------------------------------------------------------
-# CLI
-# ---------------------------------------------------------------------------
-
-def parse_args() -> argparse.Namespace:
-    p = argparse.ArgumentParser(description="Generate text with a CustomLM checkpoint")
-    p.add_argument("--checkpoint", required=True,
-                   help="Path to model checkpoint (.pt)")
-    p.add_argument("--prompt", default="Once upon a time",
-                   help="Seed text for generation")
-    p.add_argument("--max_tokens", type=int, default=200,
-                   help="Maximum number of tokens to generate")
-    p.add_argument("--temperature", type=float, default=0.8,
-                   help="Sampling temperature (default 0.8; lower → more focused)")
-    p.add_argument("--top_k", type=int, default=50,
-                   help="Top-k filtering (0 = disabled)")
-    p.add_argument("--top_p", type=float, default=0.9,
-                   help="Nucleus sampling probability (1.0 = disabled)")
-    p.add_argument("--greedy", action="store_true",
-                   help="Use greedy decoding instead of sampling")
-    p.add_argument("--device", default=None,
-                   help="Device to run on (default: cuda if available, else cpu)")
-    return p.parse_args()
+def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
+    config_path, defaults = load_config_defaults(argv, section="inference")
+    parser = argparse.ArgumentParser(description="Generate text with a CustomLM checkpoint")
+    parser.add_argument("--config", type=Path, default=config_path, help="Optional JSON preset / recipe file.")
+    parser.add_argument("--checkpoint", required=True)
+    parser.add_argument("--tokenizer", default=None, help="Optional tokenizer override.")
+    parser.add_argument("--prompt", default="Once upon a time")
+    parser.add_argument("--max_tokens", type=int, default=200)
+    parser.add_argument("--temperature", type=float, default=0.8)
+    parser.add_argument("--top_k", type=int, default=50)
+    parser.add_argument("--top_p", type=float, default=0.9)
+    parser.add_argument("--greedy", action="store_true")
+    parser.add_argument("--device", default=None)
+    parser.add_argument("--skip_special_tokens", action="store_true")
+    if defaults:
+        parser.set_defaults(**defaults)
+    return parser.parse_args(argv)
 
 
-def main() -> None:
-    args = parse_args()
+def main(argv: Optional[list[str]] = None) -> None:
+    args = parse_args(argv)
+    device = torch.device(args.device or ("cuda" if torch.cuda.is_available() else "cpu"))
 
-    device = args.device or ("cuda" if torch.cuda.is_available() else "cpu")
-    device = torch.device(device)
-
-    # Load model.
-    from model.gpt import GPT  # noqa: PLC0415 — deferred to keep import fast
     print(f"Loading checkpoint: {args.checkpoint}")
-    model = GPT.from_checkpoint(args.checkpoint, device=str(device))
+    model, _, payload = load_model_bundle(args.checkpoint, device=str(device))
     model.eval()
     model.to(device)
+
+    if args.tokenizer:
+        tokenizer_spec = load_tokenizer_spec(args.tokenizer)
+    else:
+        tokenizer_spec = load_tokenizer_spec_from_checkpoint(args.checkpoint, payload=payload)
+    tokenizer_spec = tokenizer_spec or default_gpt2_tokenizer_spec()
+    runtime_tokenizer = load_runtime_tokenizer(tokenizer_spec)
+
     print(
-        f"Model loaded — {model.num_parameters() / 1e6:.1f} M params | "
-        f"context {model.config.context_length} tokens"
+        f"Model loaded - {model.num_parameters() / 1e6:.1f} M params | "
+        f"context {model.config.context_length} | tokenizer {tokenizer_spec.name}"
     )
 
-    # Tokenise prompt.
-    enc = _load_tokeniser()
-    token_ids = enc.encode(args.prompt)
+    token_ids = runtime_tokenizer.encode(args.prompt, add_eos=False)
     idx = torch.tensor([token_ids], dtype=torch.long, device=device)
 
-    # Generate.
-    print(f"\nPrompt: {args.prompt!r}\n{'─' * 60}")
+    print(f"\nPrompt: {args.prompt!r}\n{'-' * 60}")
     t0 = time.perf_counter()
     out = generate(
         model,
@@ -180,18 +147,16 @@ def main() -> None:
         top_p=args.top_p,
         greedy=args.greedy,
     )
-    t1 = time.perf_counter()
-    elapsed = t1 - t0
+    elapsed = time.perf_counter() - t0
     new_tokens = out.shape[1] - idx.shape[1]
 
-    # Decode and print.
     generated_ids = out[0].tolist()
-    text = enc.decode(generated_ids)
+    text = runtime_tokenizer.decode(generated_ids, skip_special_tokens=args.skip_special_tokens)
     print(text)
     print(
-        f"\n{'─' * 60}\n"
+        f"\n{'-' * 60}\n"
         f"Generated {new_tokens} tokens in {elapsed:.2f}s "
-        f"({new_tokens / elapsed:.1f} tok/s)"
+        f"({new_tokens / max(elapsed, 1e-6):.1f} tok/s)"
     )
 
 

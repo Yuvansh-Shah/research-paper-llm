@@ -177,7 +177,37 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--target-mb", type=int, default=200, help="Approximate raw text character-budget target in MiB units (1 MiB = 1,048,576 characters).")
     parser.add_argument("--raw-output", type=Path, default=DEFAULT_RAW, help="Path for cleaned raw text output.")
     parser.add_argument("--input-text-file", type=Path, default=None, help="Optional existing text file; skips download if provided.")
+    parser.add_argument("--smoke", action="store_true", help="Generate a minimal dataset for smoke testing (~50KB).")
     return parser.parse_args(argv)
+
+
+SMOKE_TEXT = """Geography is the study of Earth and its features, inhabitants, and phenomena.
+Physical geography focuses on natural processes and landforms, including mountains, rivers, and climate patterns.
+Human geography studies human activity and its relationship with the environment.
+The Earth's surface is divided into continents: Africa, Antarctica, Asia, Australia, Europe, North America, and South America.
+Mountains form when tectonic plates collide, pushing rock upward over millions of years.
+Rivers carry water from highlands to seas, shaping valleys and deltas along the way.
+Climate describes long-term weather patterns in a region, influenced by latitude, altitude, and ocean currents.
+Deserts receive less than 250mm of rainfall annually and cover about one-third of Earth's land surface.
+Rainforests contain the highest biodiversity on Earth and are found near the equator.
+The water cycle describes continuous movement of water through evaporation, condensation, and precipitation.
+Plate tectonics explains how continents drift and earthquakes occur along fault lines.
+The atmosphere protects Earth from harmful radiation and maintains temperatures suitable for life.
+Oceanography studies the physical and biological aspects of the world's oceans.
+Cartography is the science and art of map-making, representing Earth's features on flat surfaces.
+Biogeography examines the distribution of species across Earth's surface.
+Soil formation depends on climate, organisms, topography, parent material, and time.
+Glaciers are massive ice bodies that shape landscapes through erosion and deposition.
+Volcanoes form where magma reaches Earth's surface, often at plate boundaries.
+The ozone layer in the stratosphere absorbs most of the Sun's ultraviolet radiation.
+Hydrology studies the movement, distribution, and quality of water on Earth.
+"""
+
+
+def generate_smoke_dataset(train_path: Path, val_path: Path) -> tuple[int, int]:
+    """Generate a minimal dataset for smoke testing without internet access."""
+    print("[prepare] generating smoke test dataset (no download required)")
+    return tokenize_and_split(SMOKE_TEXT * 50, train_path, val_path)  # ~50KB
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -186,6 +216,19 @@ def main(argv: list[str] | None = None) -> int:
     PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
 
     print("[prepare] starting geography corpus preparation")
+    
+    # Smoke test mode: generate minimal dataset without download
+    if args.smoke:
+        try:
+            train_count, val_count = generate_smoke_dataset(TRAIN_BIN, VAL_BIN)
+        except RuntimeError as exc:
+            print(f"[prepare] error: {exc}", file=sys.stderr)
+            return 1
+        print(f"[prepare] smoke dataset token counts: train={train_count} val={val_count}")
+        verify_dataset_readable(TRAIN_BIN, VAL_BIN)
+        print("[prepare] smoke dataset completed successfully")
+        return 0
+    
     if args.input_text_file is not None:
         text = args.input_text_file.read_text(encoding="utf-8")
         args.raw_output.write_text(clean_wikipedia_text(text), encoding="utf-8")
