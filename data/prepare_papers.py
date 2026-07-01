@@ -903,6 +903,18 @@ def process_corpus(
 
     dblp_path = Path(dblp_path) if dblp_path else None
     arxiv_path = Path(arxiv_path) if arxiv_path else None
+    if dblp_path is not None and not dblp_path.exists():
+        print(
+            f"[prepare_papers] warning: DBLP input not found, skipping source: {dblp_path}",
+            file=sys.stderr,
+        )
+        dblp_path = None
+    if arxiv_path is not None and not arxiv_path.exists():
+        print(
+            f"[prepare_papers] warning: arXiv input not found, skipping source: {arxiv_path}",
+            file=sys.stderr,
+        )
+        arxiv_path = None
     sources = iter_sources(dblp_path, arxiv_path, max_records_per_source)
     if not sources:
         raise FileNotFoundError(

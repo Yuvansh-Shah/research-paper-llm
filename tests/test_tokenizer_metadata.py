@@ -17,6 +17,55 @@ class TokenizerMetadataTests(unittest.TestCase):
         self.assertEqual(spec.name, "gpt2")
         self.assertEqual(spec.vocab_size, 50_257)
 
+    def test_manifest_prefers_co_located_tokenizer_over_stale_absolute_path(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            tokenizer_json = root / "tokenizer.json"
+            tokenizer_json.write_text("{}", encoding="utf-8")
+            stale_path = root / "elsewhere" / "tokenizer.json"
+            manifest = root / "tokenizer_manifest.json"
+            manifest.write_text(
+                json.dumps(
+                    {
+                        "tokenizer": {
+                            "name": "research-papers-bpe32k",
+                            "backend": "hf_tokenizers",
+                            "vocab_size": 32_000,
+                            "eos_token_id": 1,
+                            "tokenizer_path": str(stale_path),
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            spec = load_tokenizer_spec(manifest)
+            self.assertEqual(Path(spec.tokenizer_path), tokenizer_json.resolve())
+
+    def test_manifest_rebases_relative_tokenizer_path(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            tokenizer_json = root / "tokenizer.json"
+            tokenizer_json.write_text("{}", encoding="utf-8")
+            manifest = root / "tokenizer_manifest.json"
+            manifest.write_text(
+                json.dumps(
+                    {
+                        "tokenizer": {
+                            "name": "research-papers-bpe32k",
+                            "backend": "hf_tokenizers",
+                            "vocab_size": 32_000,
+                            "eos_token_id": 1,
+                            "tokenizer_path": "tokenizer.json",
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            spec = load_tokenizer_spec(manifest)
+            self.assertEqual(Path(spec.tokenizer_path), tokenizer_json.resolve())
+
     def test_resolve_tokenizer_spec_and_document_index_from_manifest(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)

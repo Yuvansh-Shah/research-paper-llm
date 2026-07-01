@@ -5,7 +5,6 @@ from __future__ import annotations
 import argparse
 import json
 import math
-import os
 import platform
 import socket
 import time
@@ -14,10 +13,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
+import numpy as np
 import torch
 import torch.nn as nn
-from torch.utils.data import DataLoader
-from torch.utils.data.distributed import DistributedSampler
+from torch.utils.data import DataLoader, RandomSampler
 
 import sys
 
@@ -40,36 +39,33 @@ from tokenization import (
 from training.dataset import TokenDataset, resolve_tokenizer_spec_from_dataset
 from training.lr_schedule import CosineScheduler
 
+DEFAULT_TRAIN_BIN = PROJECT_ROOT / "data" / "processed" / "train.bin"
+DEFAULT_VAL_BIN = PROJECT_ROOT / "data" / "processed" / "val.bin"
+DEFAULT_OUT_DIR = PROJECT_ROOT / "checkpoints"
+SMOKE_DATA_DIR = PROJECT_ROOT / "data" / "processed" / "smoke"
+SMOKE_OUT_DIR = DEFAULT_OUT_DIR / "smoke"
+
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def setup_ddp() -> tuple[int, int, int, torch.device]:
-    if "RANK" not in os.environ:
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        return 0, 0, 1, device
-
-    rank = int(os.environ["RANK"])
-    local_rank = int(os.environ["LOCAL_RANK"])
-    world_size = int(os.environ["WORLD_SIZE"])
-    backend = "nccl" if torch.cuda.is_available() else "gloo"
-    torch.distributed.init_process_group(backend=backend)
-    if torch.cuda.is_available():
-        device = torch.device(f"cuda:{local_rank}")
-        torch.cuda.set_device(device)
-    else:
-        device = torch.device("cpu")
-    return rank, local_rank, world_size, device
+def resolve_device(device_arg: str) -> torch.device:
+    if device_arg == "cuda" and not torch.cuda.is_available():
+        raise SystemExit(
+            "--device cuda was requested but CUDA is not available. "
+            "Use --device cpu or --device auto."
+        )
+    if device_arg == "auto":
+        return torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    return torch.device(device_arg)
 
 
-def cleanup_ddp() -> None:
-    if torch.distributed.is_initialized():
-        torch.distributed.destroy_process_group()
-
-
-def is_main_process(rank: int) -> bool:
-    return rank == 0
+def _plain_args(args: argparse.Namespace) -> dict:
+    return {
+        key: str(value) if isinstance(value, Path) else value
+        for key, value in vars(args).items()
+    }
 
 
 def _set_defaults_from_config(parser: argparse.ArgumentParser, defaults: dict) -> None:
@@ -82,10 +78,11 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Pre-train a GPT-style language model")
     parser.add_argument("--config", type=Path, default=config_path, help="Optional JSON preset / recipe file.")
 
-    parser.add_argument("--train_bin", default="data/processed/train.bin")
-    parser.add_argument("--val_bin", default="data/processed/val.bin")
-    parser.add_argument("--out_dir", default="checkpoints")
+    parser.add_argument("--train_bin", default=str(DEFAULT_TRAIN_BIN))
+    parser.add_argument("--val_bin", default=str(DEFAULT_VAL_BIN))
+    parser.add_argument("--out_dir", default=str(DEFAULT_OUT_DIR))
     parser.add_argument("--tokenizer", default=None, help="Optional tokenizer override.")
+    parser.add_argument("--device", default="auto", choices=["auto", "cpu", "cuda"])
 
     parser.add_argument("--model_size", default="base", choices=["debug", "small", "base", "large", "xl"])
     parser.add_argument("--context_length", type=int, default=None)
@@ -109,7 +106,6 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
 
     parser.add_argument("--resume", default=None, help="Path to checkpoint to resume from, or 'auto'.")
     parser.add_argument("--gradient_checkpointing", action="store_true")
-    parser.add_argument("--compile", action="store_true")
 
     parser.add_argument("--sample_prompt_suite", default="research_capability", choices=["generic", "research", "research_capability"])
     parser.add_argument("--sample_prompts", default=None, help="Optional prompt file for training snapshots.")
@@ -137,30 +133,24 @@ def evaluate(
     eval_steps: int,
     device: torch.device,
     autocast_ctx,
-    rank: int,
-    world_size: int,
+    sampler_generator: torch.Generator | None = None,
+    seed: int = 0,
 ) -> float:
     model.eval()
     total_loss = 0.0
     steps = 0
+
+    if sampler_generator is not None:
+        sampler_generator.manual_seed(seed)
 
     for x, y in val_loader:
         if steps >= eval_steps:
             break
         x, y = x.to(device), y.to(device)
         with autocast_ctx:
-            if hasattr(model, "module"):
-                _, loss = model.module(x, y)
-            else:
-                _, loss = model(x, y)
+            _, loss = model(x, y)
         total_loss += float(loss.item())
         steps += 1
-
-    if world_size > 1:
-        loss_tensor = torch.tensor([total_loss, steps], dtype=torch.float32, device=device)
-        torch.distributed.all_reduce(loss_tensor)
-        total_loss = float(loss_tensor[0].item())
-        steps = int(loss_tensor[1].item())
 
     model.train()
     return total_loss / max(1, steps)
@@ -205,6 +195,38 @@ def build_model_config(args: argparse.Namespace, tokenizer_spec: TokenizerSpec) 
     return config
 
 
+def ensure_smoke_data(args: argparse.Namespace) -> None:
+    """Point a smoke run at small synthetic token bins, generating them if needed."""
+    if Path(args.train_bin).exists() and Path(args.val_bin).exists():
+        return
+    train_bin = SMOKE_DATA_DIR / "train.bin"
+    val_bin = SMOKE_DATA_DIR / "val.bin"
+    if not (train_bin.exists() and val_bin.exists()):
+        SMOKE_DATA_DIR.mkdir(parents=True, exist_ok=True)
+        vocab_size = default_gpt2_tokenizer_spec().vocab_size
+        rng = np.random.default_rng(1337)
+        pattern = rng.integers(0, vocab_size, size=97, dtype=np.uint16)
+        tokens = np.tile(pattern, 512)
+        split = int(len(tokens) * 0.9)
+        tokens[:split].tofile(train_bin)
+        tokens[split:].tofile(val_bin)
+        print(f"Generated synthetic smoke dataset -> {SMOKE_DATA_DIR}")
+    args.train_bin = str(train_bin)
+    args.val_bin = str(val_bin)
+
+
+def ensure_dataset_files(args: argparse.Namespace) -> None:
+    for flag, path in (("--train_bin", args.train_bin), ("--val_bin", args.val_bin)):
+        if not Path(path).exists():
+            raise SystemExit(
+                f"Dataset file not found: {path}\n"
+                "Build the corpus first with 'python data/prepare_papers.py', then point "
+                f"{flag} at the resulting split manifest or token .bin file "
+                "(e.g. data/processed/papers/train.manifest.json).\n"
+                "For a quick offline check, run: python training/train.py --smoke"
+            )
+
+
 def find_resume_checkpoint(out_dir: str | Path) -> Optional[Path]:
     out_dir = Path(out_dir)
     latest_path = out_dir / "latest.pt"
@@ -233,22 +255,20 @@ def create_run_metadata(
     args: argparse.Namespace,
     config: GPTConfig,
     tokenizer_spec: TokenizerSpec,
-    world_size: int,
     device: torch.device,
 ) -> dict:
     return {
         "created_at": _now_iso(),
         "hostname": socket.gethostname(),
         "platform": platform.platform(),
-        "torch_version": torch.__version__,
-        "world_size": world_size,
+        "torch_version": str(torch.__version__),
         "device": str(device),
         "model_size": args.model_size,
-        "model_config": config.__dict__,
+        "model_config": dict(config.__dict__),
         "tokenizer": tokenizer_spec.to_dict(),
         "train_bin": str(Path(args.train_bin).resolve()),
         "val_bin": str(Path(args.val_bin).resolve()),
-        "args": vars(args),
+        "args": _plain_args(args),
     }
 
 
@@ -270,16 +290,15 @@ def save_generation_snapshot(
     runtime_tokenizer = load_runtime_tokenizer(tokenizer_spec)
     prompts, resolved_suite = get_prompts(prompts_file, prompt_suite)
     prompts = prompts[:prompt_count]
-    raw_model = model.module if hasattr(model, "module") else model
 
     samples = []
-    raw_model.eval()
+    model.eval()
     try:
         for prompt in prompts:
             prompt_ids = runtime_tokenizer.encode(prompt, add_eos=False)
             idx = torch.tensor([prompt_ids], dtype=torch.long, device=device)
             output_ids = generate(
-                model=raw_model,
+                model=model,
                 idx=idx,
                 max_new_tokens=max_new_tokens,
                 temperature=temperature,
@@ -294,7 +313,7 @@ def save_generation_snapshot(
                 }
             )
     finally:
-        raw_model.train()
+        model.train()
 
     sample_dir = Path(out_dir) / "samples"
     sample_dir.mkdir(parents=True, exist_ok=True)
@@ -310,7 +329,7 @@ def save_generation_snapshot(
 
 def build_checkpoint_payload(
     *,
-    raw_model: GPT,
+    model: GPT,
     optimizer: torch.optim.Optimizer,
     scaler: torch.amp.GradScaler,
     scheduler: CosineScheduler,
@@ -323,13 +342,13 @@ def build_checkpoint_payload(
     run_metadata: dict,
 ) -> dict:
     return {
-        "model_state_dict": raw_model.state_dict(),
+        "model_state_dict": model.state_dict(),
         "optimizer_state_dict": optimizer.state_dict(),
         "scaler_state_dict": scaler.state_dict(),
         "scheduler_state_dict": scheduler.state_dict(),
         "step": step,
-        "config": raw_model.config.__dict__,
-        "args": vars(args),
+        "config": dict(model.config.__dict__),
+        "args": _plain_args(args),
         "tokenizer": tokenizer_spec.to_dict(),
         "dataset": {
             "train_bin": str(Path(args.train_bin).resolve()),
@@ -346,14 +365,11 @@ def build_checkpoint_payload(
 
 
 def train(args: argparse.Namespace) -> None:
-    rank, local_rank, world_size, device = setup_ddp()
-    is_main = is_main_process(rank)
-
-    torch.manual_seed(args.seed + rank)
+    device = resolve_device(args.device)
+    torch.manual_seed(args.seed)
 
     if args.smoke:
-        if is_main:
-            print("=== SMOKE TEST MODE ===")
+        print("=== SMOKE TEST MODE ===")
         args.model_size = "debug"
         args.max_steps = 50
         args.warmup_steps = 5
@@ -364,8 +380,14 @@ def train(args: argparse.Namespace) -> None:
         args.grad_accum_steps = 2
         args.micro_batch_size = 2
         args.keep_last_n_checkpoints = max(args.keep_last_n_checkpoints, 1)
+        args.disable_training_samples = True
         if args.context_length is None:
             args.context_length = 64
+        if args.out_dir == str(DEFAULT_OUT_DIR):
+            args.out_dir = str(SMOKE_OUT_DIR)
+        ensure_smoke_data(args)
+
+    ensure_dataset_files(args)
 
     tokenizer_spec = resolve_tokenizer_spec(args)
     config = build_model_config(args, tokenizer_spec)
@@ -373,27 +395,12 @@ def train(args: argparse.Namespace) -> None:
 
     if args.gradient_checkpointing:
         model.enable_gradient_checkpointing()
-        if is_main:
-            print("Gradient checkpointing enabled.")
+        print("Gradient checkpointing enabled.")
 
-    if args.compile and hasattr(torch, "compile"):
-        if is_main:
-            print("Compiling model with torch.compile...")
-        model = torch.compile(model)
-
-    if world_size > 1:
-        model = torch.nn.parallel.DistributedDataParallel(
-            model,
-            device_ids=[local_rank] if device.type == "cuda" else None,
-            output_device=local_rank if device.type == "cuda" else None,
-        )
-
-    raw_model = model.module if hasattr(model, "module") else model
-    if is_main:
-        print(f"Training on {world_size} worker(s), device: {device}")
-        print(f"Tokenizer: {tokenizer_spec.name} | vocab={tokenizer_spec.vocab_size:,}")
-        print(f"Model: {args.model_size} | Parameters: {raw_model.num_parameters() / 1e6:.1f}M")
-        print(f"Context length: {config.context_length}")
+    print(f"Training on device: {device}")
+    print(f"Tokenizer: {tokenizer_spec.name} | vocab={tokenizer_spec.vocab_size:,}")
+    print(f"Model: {args.model_size} | Parameters: {model.num_parameters() / 1e6:.1f}M")
+    print(f"Context length: {config.context_length}")
 
     num_workers = 0 if platform.system() == "Windows" else 4
     train_dataset = TokenDataset(args.train_bin, config.context_length)
@@ -401,13 +408,24 @@ def train(args: argparse.Namespace) -> None:
     if len(train_dataset) <= 0 or len(val_dataset) <= 0:
         raise ValueError("Training or validation dataset is empty for the selected context length.")
 
-    train_sampler = DistributedSampler(train_dataset, shuffle=True) if world_size > 1 else None
-    val_sampler = DistributedSampler(val_dataset, shuffle=False) if world_size > 1 else None
-
+    # With-replacement samplers: a shuffle=True DataLoader materialises a full
+    # randperm over every window position (gigabytes at real-corpus scale), and a
+    # sequential val pass capped at eval_steps would only ever score the first few
+    # hundred tokens of the split. The val sampler is reseeded before each eval so
+    # every evaluation scores the same random subset of windows.
+    train_sampler = RandomSampler(
+        train_dataset, replacement=True, num_samples=len(train_dataset)
+    )
+    val_generator = torch.Generator()
+    val_sampler = RandomSampler(
+        val_dataset,
+        replacement=True,
+        num_samples=len(val_dataset),
+        generator=val_generator,
+    )
     train_loader = DataLoader(
         train_dataset,
         batch_size=args.micro_batch_size,
-        shuffle=(train_sampler is None),
         sampler=train_sampler,
         num_workers=num_workers,
         pin_memory=device.type == "cuda",
@@ -416,15 +434,14 @@ def train(args: argparse.Namespace) -> None:
     val_loader = DataLoader(
         val_dataset,
         batch_size=args.micro_batch_size,
-        shuffle=False,
         sampler=val_sampler,
         num_workers=num_workers,
         pin_memory=device.type == "cuda",
         drop_last=False,
     )
 
-    decay_params = [p for p in raw_model.parameters() if p.requires_grad and p.dim() >= 2]
-    no_decay_params = [p for p in raw_model.parameters() if p.requires_grad and p.dim() < 2]
+    decay_params = [p for p in model.parameters() if p.requires_grad and p.dim() >= 2]
+    no_decay_params = [p for p in model.parameters() if p.requires_grad and p.dim() < 2]
     use_fused = device.type == "cuda"
     if use_fused:
         try:
@@ -465,11 +482,10 @@ def train(args: argparse.Namespace) -> None:
         min_lr=args.min_lr,
     )
 
-    run_metadata = create_run_metadata(args, raw_model.config, tokenizer_spec, world_size, device)
+    run_metadata = create_run_metadata(args, model.config, tokenizer_spec, device)
     out_dir = Path(args.out_dir)
-    if is_main:
-        out_dir.mkdir(parents=True, exist_ok=True)
-        write_json(out_dir / "run_metadata.json", run_metadata)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    write_json(out_dir / "run_metadata.json", run_metadata)
 
     start_step = 0
     best_val_loss: Optional[float] = None
@@ -480,12 +496,12 @@ def train(args: argparse.Namespace) -> None:
     if resume_path == "auto":
         auto_path = find_resume_checkpoint(out_dir)
         resume_path = str(auto_path) if auto_path else None
-        if resume_path and is_main:
+        if resume_path:
             print(f"Auto-resume: found checkpoint {resume_path}")
 
     if resume_path and Path(resume_path).is_file():
-        payload = torch.load(resume_path, map_location=device, weights_only=False)
-        raw_model.load_state_dict(payload["model_state_dict"])
+        payload = torch.load(resume_path, map_location=device, weights_only=True)
+        model.load_state_dict(payload["model_state_dict"])
         if "optimizer_state_dict" in payload:
             optimizer.load_state_dict(payload["optimizer_state_dict"])
         if "scaler_state_dict" in payload and scaler.is_enabled():
@@ -500,10 +516,9 @@ def train(args: argparse.Namespace) -> None:
         checkpoint_tokenizer = load_tokenizer_spec_from_checkpoint(resume_path, payload=payload)
         if checkpoint_tokenizer.vocab_size != tokenizer_spec.vocab_size:
             raise ValueError("Resume checkpoint tokenizer does not match current dataset/tokenizer.")
-        if is_main:
-            print(f"Resumed from step {start_step}")
+        print(f"Resumed from step {start_step}")
 
-    if args.use_wandb and is_main:
+    if args.use_wandb:
         import wandb  # noqa: PLC0415
 
         run_name = args.wandb_run_name or f"{args.model_size}-{tokenizer_spec.name}"
@@ -515,17 +530,13 @@ def train(args: argparse.Namespace) -> None:
     step = start_step
     t0 = time.perf_counter()
 
-    effective_batch = args.micro_batch_size * args.grad_accum_steps * world_size
-    if is_main:
-        print(f"Effective batch size: {effective_batch}")
-        print(f"Starting training from step {start_step}...")
+    effective_batch = args.micro_batch_size * args.grad_accum_steps
+    print(f"Effective batch size: {effective_batch}")
+    print(f"Starting training from step {start_step}...")
 
     while step < args.max_steps:
-        if train_sampler is not None:
-            train_sampler.set_epoch(step // max(1, len(train_loader)))
-
         accumulated_loss = 0.0
-        for micro_step in range(args.grad_accum_steps):
+        for _ in range(args.grad_accum_steps):
             try:
                 x, y = next(train_iter)
             except StopIteration:
@@ -533,44 +544,45 @@ def train(args: argparse.Namespace) -> None:
                 x, y = next(train_iter)
 
             x, y = x.to(device), y.to(device)
-            sync_context = nullcontext()
-            if world_size > 1 and micro_step < args.grad_accum_steps - 1:
-                sync_context = model.no_sync()
+            with autocast_ctx:
+                _, loss = model(x, y)
+                loss = loss / args.grad_accum_steps
+            scaler.scale(loss).backward()
+            accumulated_loss += float(loss.item())
 
-            with sync_context:
-                with autocast_ctx:
-                    if hasattr(model, "module"):
-                        _, loss = model.module(x, y)
-                    else:
-                        _, loss = model(x, y)
-                    loss = loss / args.grad_accum_steps
-                scaler.scale(loss).backward()
-                accumulated_loss += float(loss.item())
+        if not math.isfinite(accumulated_loss):
+            raise RuntimeError(
+                f"Non-finite training loss ({accumulated_loss}) at step {step + 1}. "
+                "Training diverged; lower --max_lr or use --dtype fp32, then resume "
+                "from the last checkpoint."
+            )
 
-        if args.grad_clip > 0:
-            scaler.unscale_(optimizer)
-            torch.nn.utils.clip_grad_norm_(raw_model.parameters(), args.grad_clip)
-
+        scaler.unscale_(optimizer)
+        grad_norm = float(
+            torch.nn.utils.clip_grad_norm_(
+                model.parameters(),
+                args.grad_clip if args.grad_clip > 0 else float("inf"),
+            )
+        )
+        lr = scheduler.step()
         scaler.step(optimizer)
         scaler.update()
-        lr = scheduler.step()
         optimizer.zero_grad(set_to_none=True)
         step += 1
 
-        if step % args.log_interval == 0 and is_main:
+        if step % args.log_interval == 0:
             elapsed = time.perf_counter() - t0
             tokens_per_sec = (
                 args.log_interval
                 * args.grad_accum_steps
                 * args.micro_batch_size
                 * config.context_length
-                * world_size
                 / max(elapsed, 1e-6)
             )
             ppl = math.exp(min(accumulated_loss, 20))
             print(
                 f"step {step:6d} | loss {accumulated_loss:.4f} | ppl {ppl:.1f} "
-                f"| lr {lr:.2e} | {tokens_per_sec:.0f} tok/s"
+                f"| lr {lr:.2e} | grad_norm {grad_norm:.2f} | {tokens_per_sec:.0f} tok/s"
             )
             t0 = time.perf_counter()
             if args.use_wandb:
@@ -581,6 +593,7 @@ def train(args: argparse.Namespace) -> None:
                         "train/loss": accumulated_loss,
                         "train/ppl": ppl,
                         "train/lr": lr,
+                        "train/grad_norm": grad_norm,
                         "train/tokens_per_sec": tokens_per_sec,
                     },
                     step=step,
@@ -592,65 +605,72 @@ def train(args: argparse.Namespace) -> None:
             should_eval = True
 
         if should_eval:
-            val_loss = evaluate(model, val_loader, args.eval_steps, device, autocast_ctx, rank, world_size)
+            val_loss = evaluate(
+                model,
+                val_loader,
+                args.eval_steps,
+                device,
+                autocast_ctx,
+                sampler_generator=val_generator,
+                seed=args.seed,
+            )
             last_val_loss = val_loss
             last_eval_step = step
             is_best = best_val_loss is None or val_loss < best_val_loss
             if is_best:
                 best_val_loss = val_loss
-            if is_main:
-                val_ppl = math.exp(min(val_loss, 20))
-                print(f"  -> val loss {val_loss:.4f} | val ppl {val_ppl:.1f}")
-                metrics_payload = {
-                    "step": step,
-                    "val_loss": val_loss,
-                    "val_ppl": val_ppl,
-                    "best_val_loss": best_val_loss,
-                    "evaluated_at": _now_iso(),
-                }
-                write_json(out_dir / "latest_metrics.json", metrics_payload)
-                if args.use_wandb:
-                    import wandb  # noqa: PLC0415
+            val_ppl = math.exp(min(val_loss, 20))
+            print(f"  -> val loss {val_loss:.4f} | val ppl {val_ppl:.1f}")
+            metrics_payload = {
+                "step": step,
+                "val_loss": val_loss,
+                "val_ppl": val_ppl,
+                "best_val_loss": best_val_loss,
+                "evaluated_at": _now_iso(),
+            }
+            write_json(out_dir / "latest_metrics.json", metrics_payload)
+            if args.use_wandb:
+                import wandb  # noqa: PLC0415
 
-                    wandb.log({"val/loss": val_loss, "val/ppl": val_ppl, "val/best_loss": best_val_loss}, step=step)
-                if not args.disable_training_samples:
-                    save_generation_snapshot(
-                        model=model,
-                        tokenizer_spec=tokenizer_spec,
-                        step=step,
-                        out_dir=out_dir,
-                        prompts_file=args.sample_prompts,
-                        prompt_suite=args.sample_prompt_suite,
-                        prompt_count=args.sample_count,
-                        max_new_tokens=args.sample_max_new_tokens,
-                        temperature=args.sample_temperature,
-                        top_k=args.sample_top_k,
-                        top_p=args.sample_top_p,
-                        device=device,
-                    )
-                if is_best:
-                    best_payload = build_checkpoint_payload(
-                        raw_model=raw_model,
-                        optimizer=optimizer,
-                        scaler=scaler,
-                        scheduler=scheduler,
-                        step=step,
-                        args=args,
-                        tokenizer_spec=tokenizer_spec,
-                        best_val_loss=best_val_loss,
-                        last_val_loss=last_val_loss,
-                        last_eval_step=last_eval_step,
-                        run_metadata=run_metadata,
-                    )
-                    torch.save(best_payload, out_dir / "best.pt")
-                    write_json(
-                        out_dir / "best_checkpoint.json",
-                        {"step": step, "val_loss": val_loss, "saved_at": _now_iso()},
-                    )
+                wandb.log({"val/loss": val_loss, "val/ppl": val_ppl, "val/best_loss": best_val_loss}, step=step)
+            if not args.disable_training_samples:
+                save_generation_snapshot(
+                    model=model,
+                    tokenizer_spec=tokenizer_spec,
+                    step=step,
+                    out_dir=out_dir,
+                    prompts_file=args.sample_prompts,
+                    prompt_suite=args.sample_prompt_suite,
+                    prompt_count=args.sample_count,
+                    max_new_tokens=args.sample_max_new_tokens,
+                    temperature=args.sample_temperature,
+                    top_k=args.sample_top_k,
+                    top_p=args.sample_top_p,
+                    device=device,
+                )
+            if is_best:
+                best_payload = build_checkpoint_payload(
+                    model=model,
+                    optimizer=optimizer,
+                    scaler=scaler,
+                    scheduler=scheduler,
+                    step=step,
+                    args=args,
+                    tokenizer_spec=tokenizer_spec,
+                    best_val_loss=best_val_loss,
+                    last_val_loss=last_val_loss,
+                    last_eval_step=last_eval_step,
+                    run_metadata=run_metadata,
+                )
+                torch.save(best_payload, out_dir / "best.pt")
+                write_json(
+                    out_dir / "best_checkpoint.json",
+                    {"step": step, "val_loss": val_loss, "saved_at": _now_iso()},
+                )
 
-        if should_checkpoint and is_main:
+        if should_checkpoint:
             payload = build_checkpoint_payload(
-                raw_model=raw_model,
+                model=model,
                 optimizer=optimizer,
                 scaler=scaler,
                 scheduler=scheduler,
@@ -668,42 +688,40 @@ def train(args: argparse.Namespace) -> None:
             prune_old_checkpoints(out_dir, args.keep_last_n_checkpoints)
             print(f"  [saved] Checkpoint -> {step_path}")
 
-    if is_main:
-        final_payload = build_checkpoint_payload(
-            raw_model=raw_model,
-            optimizer=optimizer,
-            scaler=scaler,
-            scheduler=scheduler,
-            step=step,
-            args=args,
-            tokenizer_spec=tokenizer_spec,
-            best_val_loss=best_val_loss,
-            last_val_loss=last_val_loss,
-            last_eval_step=last_eval_step,
-            run_metadata=run_metadata,
-        )
-        torch.save(final_payload, out_dir / "final.pt")
-        torch.save(final_payload, out_dir / "latest.pt")
-        write_json(
-            out_dir / "training_summary.json",
-            {
-                "finished_at": _now_iso(),
-                "step": step,
-                "best_val_loss": best_val_loss,
-                "last_val_loss": last_val_loss,
-                "tokenizer": tokenizer_spec.to_dict(),
-                "model_config": raw_model.config.__dict__,
-            },
-        )
-        print(f"Training complete. Final checkpoint -> {out_dir / 'final.pt'}")
-        if args.use_wandb:
-            import wandb  # noqa: PLC0415
+    final_payload = build_checkpoint_payload(
+        model=model,
+        optimizer=optimizer,
+        scaler=scaler,
+        scheduler=scheduler,
+        step=step,
+        args=args,
+        tokenizer_spec=tokenizer_spec,
+        best_val_loss=best_val_loss,
+        last_val_loss=last_val_loss,
+        last_eval_step=last_eval_step,
+        run_metadata=run_metadata,
+    )
+    torch.save(final_payload, out_dir / "final.pt")
+    torch.save(final_payload, out_dir / "latest.pt")
+    write_json(
+        out_dir / "training_summary.json",
+        {
+            "finished_at": _now_iso(),
+            "step": step,
+            "best_val_loss": best_val_loss,
+            "last_val_loss": last_val_loss,
+            "tokenizer": tokenizer_spec.to_dict(),
+            "model_config": dict(model.config.__dict__),
+        },
+    )
+    print(f"Training complete. Final checkpoint -> {out_dir / 'final.pt'}")
+    if args.use_wandb:
+        import wandb  # noqa: PLC0415
 
-            wandb.finish()
+        wandb.finish()
 
     train_dataset.close()
     val_dataset.close()
-    cleanup_ddp()
 
 
 if __name__ == "__main__":

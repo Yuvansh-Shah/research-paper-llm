@@ -16,13 +16,12 @@ env/
 ENV/
 
 # ── PyTorch / training artefacts ─────────────────────────────────────────────
-checkpoints/*.pt
 checkpoints/
 logs/
 *.pt
 *.bin
 
-# ── Data (large files - download locally via data/prepare.py) ────────────────
+# ── Data (large files - built locally via data/build_corpus.py) ──────────────
 data/raw/
 data/processed/
 dblp-v10.csv

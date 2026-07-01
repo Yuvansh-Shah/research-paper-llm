@@ -13,7 +13,6 @@ from pathlib import Path
 from typing import Optional
 
 import torch
-from torch.utils.data import DataLoader
 
 import sys
 
@@ -25,7 +24,7 @@ from config_utils import load_config_defaults
 from evaluation.prompt_suites import PROMPT_SUITES, get_prompts
 from inference.generate import generate, load_model_bundle
 from model.config import GPTConfig
-from training.dataset import TokenDataset, TokenStore
+from training.dataset import TokenStore
 from tokenization import (
     load_runtime_tokenizer,
     load_tokenizer_spec,
@@ -61,6 +60,7 @@ class EvaluationReport:
     timestamp: str
     prompt_suite: str
     perplexity_results: list[dict]
+    skipped_splits: dict[str, str]
     source_breakdowns: dict[str, dict]
     domain_breakdowns: dict[str, dict]
     category_breakdowns: dict[str, dict]
@@ -83,30 +83,55 @@ def evaluate_perplexity(
     device: Optional[torch.device] = None,
     split_name: str = "test",
 ) -> PerplexityResult:
+    """Token-weighted perplexity over non-overlapping ``context_length`` windows.
+
+    The token stream is walked in steps of ``context_length`` so every target
+    token is scored exactly once (the standard evaluation protocol). The final
+    partial window, if any, is scored on its own.
+    """
     if device is None:
         device = next(model.parameters()).device
 
     model.eval()
-    dataset = TokenDataset(data_path, context_length)
-    loader = DataLoader(dataset, batch_size=batch_size, shuffle=False, drop_last=False)
+    store = TokenStore(data_path)
 
     total_loss = 0.0
     total_tokens = 0
     num_batches = 0
     t0 = time.perf_counter()
 
-    for x, y in loader:
-        if max_batches and num_batches >= max_batches:
-            break
-        x, y = x.to(device), y.to(device)
+    def _score_batch(windows: list[torch.Tensor]) -> None:
+        nonlocal total_loss, total_tokens, num_batches
+        batch = torch.stack(windows).to(device)
+        x = batch[:, :-1].contiguous()
+        y = batch[:, 1:].contiguous()
         _, loss = model(x, y)
         batch_tokens = y.numel()
         total_loss += float(loss.item()) * batch_tokens
         total_tokens += batch_tokens
         num_batches += 1
 
+    try:
+        pending: list[torch.Tensor] = []
+        for cursor in range(0, len(store) - 1, context_length):
+            if max_batches and num_batches >= max_batches:
+                pending = []
+                break
+            window = store.read_range(cursor, min(cursor + context_length + 1, len(store)))
+            window_tensor = torch.from_numpy(window.astype("int64", copy=False))
+            if window_tensor.numel() == context_length + 1:
+                pending.append(window_tensor)
+                if len(pending) == batch_size:
+                    _score_batch(pending)
+                    pending = []
+            elif window_tensor.numel() >= 2:
+                _score_batch([window_tensor])
+        if pending and not (max_batches and num_batches >= max_batches):
+            _score_batch(pending)
+    finally:
+        store.close()
+
     elapsed = time.perf_counter() - t0
-    dataset.close()
     avg_loss = total_loss / max(1, total_tokens)
     perplexity = math.exp(min(avg_loss, 20))
     return PerplexityResult(
@@ -328,12 +353,20 @@ def run_evaluation(
     )
 
     perplexity_results: list[dict] = []
+    skipped_splits: dict[str, str] = {}
     source_breakdowns: dict[str, dict] = {}
     domain_breakdowns: dict[str, dict] = {}
     category_breakdowns: dict[str, dict] = {}
 
     for split_name, split_path in (("val", val_bin), ("test", test_bin)):
-        if not split_path or not Path(split_path).exists():
+        if not split_path:
+            continue
+        if not Path(split_path).exists():
+            print(
+                f"WARNING: {split_name} split file not found, skipping: {split_path}",
+                file=sys.stderr,
+            )
+            skipped_splits[split_name] = str(split_path)
             continue
         print(f"\nEvaluating perplexity on {split_name}: {split_path}")
         result = evaluate_perplexity(
@@ -392,6 +425,7 @@ def run_evaluation(
         timestamp=datetime.now().isoformat(),
         prompt_suite=resolved_prompt_suite if run_generation else "disabled",
         perplexity_results=perplexity_results,
+        skipped_splits=skipped_splits,
         source_breakdowns=source_breakdowns,
         domain_breakdowns=domain_breakdowns,
         category_breakdowns=category_breakdowns,
@@ -433,6 +467,8 @@ def run_evaluation(
             f"{item['split']:>5s} | loss {item['loss']:.4f} | ppl {item['perplexity']:.2f} "
             f"| tokens {item['num_tokens']:,}"
         )
+    for split_name, split_path in report.skipped_splits.items():
+        print(f"{split_name:>5s} | SKIPPED (file not found: {split_path})")
     for split_name, breakdown in report.source_breakdowns.items():
         print(f"\n{split_name} source breakdown:")
         for source, metrics in breakdown.items():
@@ -474,7 +510,7 @@ def main(argv: Optional[list[str]] = None) -> None:
     args = parse_args(argv)
     output_dir = args.output_dir
     if args.save_outputs and not output_dir:
-        output_dir = "evaluation/results"
+        output_dir = str(PROJECT_ROOT / "evaluation" / "results")
 
     run_evaluation(
         checkpoint_path=args.checkpoint,

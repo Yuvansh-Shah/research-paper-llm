@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import contextlib
 import csv
 import gc
+import io
 import json
 import tempfile
 import unittest
@@ -186,6 +188,66 @@ class PaperPipelineTests(unittest.TestCase):
             dataset.close()
             del dataset
             gc.collect()
+
+    def test_process_corpus_skips_missing_source_with_warning(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            arxiv_path = root / "arxiv.json"
+            output_dir = root / "processed"
+
+            with arxiv_path.open("w", encoding="utf-8") as handle:
+                for index in range(3):
+                    row = {
+                        "id": f"arxiv-{index}",
+                        "title": f"Research Corpus Paper {index}",
+                        "abstract": (
+                            f"This abstract describes experiment {index} on research-paper "
+                            f"pretraining and evaluation over scientific text corpora."
+                        ),
+                        "authors": "A. Researcher",
+                        "categories": "cs.LG",
+                        "update_date": "2023-01-01",
+                    }
+                    handle.write(json.dumps(row) + "\n")
+
+            stderr = io.StringIO()
+            with contextlib.redirect_stderr(stderr):
+                result = process_corpus(
+                    dblp_path=root / "missing-dblp.csv",
+                    arxiv_path=arxiv_path,
+                    output_dir=output_dir,
+                    quality_config=QualityConfig(min_abstract_chars=20),
+                    encode_fn=_ascii_encoder,
+                    tokenizer_name="ascii-test",
+                    verbose=False,
+                )
+
+            self.assertIn("DBLP input not found", stderr.getvalue())
+            self.assertEqual(result.stats.total_records_seen, 3)
+            self.assertEqual(result.stats.kept_records, 3)
+            self.assertEqual(dict(result.stats.seen_by_source), {"arxiv": 3})
+
+            corpus_manifest = json.loads(
+                result.corpus_manifest_path.read_text(encoding="utf-8")
+            )
+            self.assertIsNone(corpus_manifest["inputs"]["dblp"])
+            self.assertEqual(
+                Path(corpus_manifest["inputs"]["arxiv"]), arxiv_path.resolve()
+            )
+
+    def test_process_corpus_raises_when_all_sources_missing(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            with contextlib.redirect_stderr(io.StringIO()):
+                with self.assertRaises(FileNotFoundError):
+                    process_corpus(
+                        dblp_path=root / "missing-dblp.csv",
+                        arxiv_path=root / "missing-arxiv.json",
+                        output_dir=root / "processed",
+                        encode_fn=_ascii_encoder,
+                        tokenizer_name="ascii-test",
+                        verbose=False,
+                    )
 
     def test_token_dataset_reads_sharded_manifest(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

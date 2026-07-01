@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 from typing import Optional
 
@@ -54,6 +55,12 @@ def load_prompts(path: str | Path) -> list[str]:
 
 
 def get_prompts(prompts_file: Optional[str], prompt_suite: str) -> tuple[list[str], str]:
-    if prompts_file and Path(prompts_file).exists():
-        return load_prompts(prompts_file), f"file:{prompts_file}"
+    if prompts_file:
+        if Path(prompts_file).exists():
+            return load_prompts(prompts_file), f"file:{prompts_file}"
+        print(
+            f"WARNING: prompts file not found: {prompts_file}; "
+            f"falling back to built-in suite '{prompt_suite}'",
+            file=sys.stderr,
+        )
     return PROMPT_SUITES[prompt_suite], prompt_suite

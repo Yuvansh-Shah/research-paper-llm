@@ -65,8 +65,11 @@ class GPTConfig:
         vocab_size: int = 50_257,
         context_length: int = 64,
     ) -> "GPTConfig":
-        """~10M params - Smoke tests, CPU, minimal VRAM.
-        
+        """~16M params - Smoke tests, CPU, minimal VRAM.
+
+        The default 50257-token vocab dominates the count (~13M embedding,
+        ~3M non-embedding), so a smaller vocab_size shrinks this sharply.
+
         Use case: Unit tests, CI, quick iteration on code changes.
         VRAM: <2GB | Context: 64 tokens
         """
@@ -87,8 +90,8 @@ class GPTConfig:
         vocab_size: int = 50_257,
         context_length: int = 256,
     ) -> "GPTConfig":
-        """~45M params - Quick experiments, consumer GPU.
-        
+        """~45M params (~19M non-embedding) - Quick experiments, consumer GPU.
+
         Use case: Hyperparameter search, debugging training dynamics.
         VRAM: ~4-6GB | Context: 256 tokens
         """
@@ -109,7 +112,7 @@ class GPTConfig:
         vocab_size: int = 50_257,
         context_length: int = 1024,
     ) -> "GPTConfig":
-        """~125M params (GPT-2 small equivalent) - Production baseline.
+        """~124M params (GPT-2 small equivalent) - Production baseline.
         
         Use case: Meaningful capability experiments, fine-tuning.
         VRAM: ~16-24GB | Context: 1024 tokens
@@ -131,7 +134,7 @@ class GPTConfig:
         vocab_size: int = 50_257,
         context_length: int = 2048,
     ) -> "GPTConfig":
-        """~350M params (GPT-2 medium equivalent) - High quality.
+        """~356M params (GPT-2 medium equivalent) - High quality.
         
         Use case: Production models, capability-focused training.
         VRAM: ~40-48GB | Context: 2048 tokens
@@ -153,7 +156,7 @@ class GPTConfig:
         vocab_size: int = 50_257,
         context_length: int = 2048,
     ) -> "GPTConfig":
-        """~774M params (GPT-2 large equivalent) - Research scale.
+        """~775M params (GPT-2 large equivalent) - Research scale.
         
         Use case: Multi-GPU training, maximum capability.
         VRAM: ~80GB+ (multi-GPU recommended) | Context: 2048 tokens

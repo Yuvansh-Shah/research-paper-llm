@@ -123,7 +123,11 @@ def _coerce_tokenizer_spec(payload: Any, *, base_dir: Optional[Path] = None) -> 
     tokenizer_path = payload.get("tokenizer_path")
     if tokenizer_path and base_dir is not None:
         candidate = Path(tokenizer_path)
-        if not candidate.is_absolute():
+        if candidate.is_absolute():
+            co_located = base_dir / candidate.name
+            if co_located.exists():
+                tokenizer_path = str(co_located.resolve())
+        else:
             tokenizer_path = str((base_dir / candidate).resolve())
 
     special_tokens = payload.get("special_tokens") or []
@@ -228,7 +232,7 @@ def load_tokenizer_spec_from_checkpoint(
 
     checkpoint_path = Path(checkpoint_path)
     if payload is None:
-        payload = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
+        payload = torch.load(checkpoint_path, map_location="cpu", weights_only=True)
     tokenizer_payload = payload.get("tokenizer")
     if tokenizer_payload is None:
         return default_gpt2_tokenizer_spec()

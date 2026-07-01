@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Research-Paper GPT &mdash; Local Demo</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="page">
+    <header>
+      <h1>Research-Paper GPT</h1>
+      <span id="status-pill" class="pill">loading&hellip;</span>
+    </header>
+    <p class="subtitle">
+      A GPT-style language model built and trained from scratch on research-paper text.
+      Runs entirely on this machine.
+    </p>
+
+    <div id="banner" class="banner hidden"></div>
+
+    <section class="panel">
+      <label class="panel-label" for="prompt">Prompt</label>
+      <textarea id="prompt" rows="4" spellcheck="false"
+        placeholder="e.g. In this paper, we propose a novel method for"></textarea>
+
+      <div class="params">
+        <div class="param">
+          <label for="max-tokens">Max tokens <span class="value" id="max-tokens-value">200</span></label>
+          <input type="range" id="max-tokens" min="1" max="512" step="1" value="200">
+        </div>
+        <div class="param">
+          <label for="temperature">Temperature <span class="value" id="temperature-value">0.80</span></label>
+          <input type="range" id="temperature" min="0" max="2" step="0.05" value="0.8">
+        </div>
+        <div class="param">
+          <label for="top-k">Top-k <span class="value" id="top-k-value">50</span></label>
+          <input type="range" id="top-k" min="0" max="200" step="1" value="50">
+        </div>
+        <div class="param">
+          <label for="top-p">Top-p <span class="value" id="top-p-value">0.90</span></label>
+          <input type="range" id="top-p" min="0.05" max="1" step="0.01" value="0.9">
+        </div>
+      </div>
+
+      <div class="actions">
+        <button id="generate" class="primary" disabled>Generate</button>
+        <button id="stop" disabled>Stop</button>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-label">Output</div>
+      <pre id="output" class="output" aria-live="polite"></pre>
+    </section>
+
+    <details class="panel about" id="about">
+      <summary>About this model</summary>
+      <div id="about-body" class="about-body">Loading model info&hellip;</div>
+    </details>
+
+    <footer>
+      Everything here is implemented from scratch in PyTorch &mdash; tokenizer, model,
+      training loop, evaluation, and this page.
+    </footer>
+  </div>
+  <script src="/static/app.js"></script>
+</body>
+</html>

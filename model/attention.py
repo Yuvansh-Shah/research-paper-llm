@@ -46,16 +46,18 @@ class CausalSelfAttention(nn.Module):
         self.attn_dropout = nn.Dropout(config.dropout)
         self.resid_dropout = nn.Dropout(config.dropout)
 
-        # Only register causal mask buffer for fallback path
+        # Only register causal mask buffer for fallback path. The buffer is
+        # non-persistent so state_dicts stay identical across environments.
         if not self.use_flash_attn:
             self.register_buffer(
                 "bias",
                 torch.tril(
                     torch.ones(config.context_length, config.context_length, dtype=torch.bool)
                 ).view(1, 1, config.context_length, config.context_length),
+                persistent=False,
             )
         else:
-            self.register_buffer("bias", None)
+            self.register_buffer("bias", None, persistent=False)
 
     def forward(self, x: Tensor) -> Tensor:
         """Forward pass.

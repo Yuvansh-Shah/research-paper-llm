@@ -8,7 +8,7 @@ import torch.nn as nn
 from torch import Tensor
 
 from model.config import GPTConfig
-from model.transformer import TransformerBlock
+from model.transformer import LayerNorm, TransformerBlock
 
 
 class GPT(nn.Module):
@@ -44,7 +44,7 @@ class GPT(nn.Module):
                 "h": nn.ModuleList(
                     [TransformerBlock(config) for _ in range(config.n_layers)]
                 ),
-                "ln_f": nn.LayerNorm(config.n_embd, elementwise_affine=config.bias),
+                "ln_f": LayerNorm(config.n_embd, bias=config.bias),
             }
         )
 
@@ -157,7 +157,7 @@ class GPT(nn.Module):
     ) -> dict:
         payload: dict = {
             "step": step,
-            "config": self.config.__dict__,
+            "config": dict(vars(self.config)),
             "model_state_dict": self.state_dict(),
         }
         if optimizer_state is not None:
@@ -187,17 +187,8 @@ class GPT(nn.Module):
     @classmethod
     def from_checkpoint(cls, path: str, device: str = "cpu") -> "GPT":
         """Load a GPT model from a checkpoint file."""
-        payload = torch.load(path, map_location=device, weights_only=False)
-        
-        # Handle both dict and GPTConfig object formats
-        config_data = payload["config"]
-        if isinstance(config_data, GPTConfig):
-            config = config_data
-        elif isinstance(config_data, dict):
-            config = GPTConfig(**config_data)
-        else:
-            raise ValueError(f"Unknown config type in checkpoint: {type(config_data)}")
-        
+        payload = torch.load(path, map_location=device, weights_only=True)
+        config = GPTConfig(**payload["config"])
         model = cls(config)
         model.load_state_dict(payload["model_state_dict"])
         return model

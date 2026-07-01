@@ -24,7 +24,7 @@ class TestGPTConfig(unittest.TestCase):
         self.assertEqual(config.n_layers, 6)
 
     def test_base_config(self) -> None:
-        """Test base config preset (~125M params)."""
+        """Test base config preset (~124M params)."""
         config = GPTConfig.base()
         self.assertEqual(config.n_embd, 768)
         self.assertEqual(config.n_heads, 12)
@@ -67,6 +67,32 @@ class TestGPTModel(unittest.TestCase):
         model = GPT(self.config)
         self.assertIsInstance(model, GPT)
         self.assertGreater(model.num_parameters(), 0)
+
+    def test_layernorm_weight_trainable_without_bias(self) -> None:
+        """LayerNorm keeps a learnable scale even when bias=False."""
+        self.assertFalse(self.config.bias)
+        model = GPT(self.config)
+
+        norms = [model.transformer["ln_f"]]
+        for block in model.transformer["h"]:
+            norms.extend([block.ln_1, block.ln_2])
+
+        for ln in norms:
+            self.assertIsNotNone(ln.weight)
+            self.assertTrue(ln.weight.requires_grad)
+            self.assertTrue(torch.equal(ln.weight, torch.ones_like(ln.weight)))
+            self.assertIsNone(ln.bias)
+
+    def test_param_count_includes_layernorm_weights(self) -> None:
+        """Each block contributes 2 LayerNorm scales, plus the final ln_f."""
+        model = GPT(self.config)
+        expected_ln_params = (2 * self.config.n_layers + 1) * self.config.n_embd
+        ln_params = sum(
+            p.numel()
+            for name, p in model.named_parameters()
+            if "ln_" in name
+        )
+        self.assertEqual(ln_params, expected_ln_params)
 
     def test_forward_pass_inference(self) -> None:
         """Test forward pass without targets (inference mode)."""
@@ -166,8 +192,9 @@ class TestCheckpointing(unittest.TestCase):
             ckpt_path = Path(tmpdir) / "test_checkpoint.pt"
             model.save_checkpoint(str(ckpt_path), step=42)
 
-            payload = torch.load(ckpt_path, weights_only=False)
+            payload = torch.load(ckpt_path, weights_only=True)
             self.assertEqual(payload["step"], 42)
+            self.assertIsInstance(payload["config"], dict)
 
     def test_checkpoint_with_optimizer_state(self) -> None:
         """Test saving checkpoint with optimizer state."""
@@ -185,7 +212,7 @@ class TestCheckpointing(unittest.TestCase):
             ckpt_path = Path(tmpdir) / "test_checkpoint.pt"
             model.save_checkpoint(str(ckpt_path), step=1, optimizer_state=optimizer.state_dict())
 
-            payload = torch.load(ckpt_path, weights_only=False)
+            payload = torch.load(ckpt_path, weights_only=True)
             self.assertIn("optimizer_state_dict", payload)
 
 

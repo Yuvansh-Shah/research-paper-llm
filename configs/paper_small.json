@@ -1,0 +1,49 @@
+{
+  "tokenizer": {
+    "output_dir": "data/tokenizers/research_papers_bpe32k",
+    "name": "research-papers-bpe32k",
+    "model_type": "bpe",
+    "vocab_size": 32000,
+    "max_records_per_source": 250000
+  },
+  "preprocess": {
+    "tokenizer": "data/tokenizers/research_papers_bpe32k",
+    "output_dir": "data/processed/papers_small",
+    "source_weights": "dblp=1.0,arxiv=1.0",
+    "train_ratio": 0.99,
+    "val_ratio": 0.005,
+    "test_ratio": 0.005,
+    "shuffle_buckets": 256,
+    "shard_size_tokens": 50000000,
+    "buffer_tokens": 1000000
+  },
+  "training": {
+    "train_bin": "data/processed/papers_small/train.manifest.json",
+    "val_bin": "data/processed/papers_small/val.manifest.json",
+    "out_dir": "checkpoints/papers_small",
+    "model_size": "small",
+    "context_length": 512,
+    "micro_batch_size": 8,
+    "grad_accum_steps": 4,
+    "max_steps": 25000,
+    "warmup_steps": 500,
+    "max_lr": 0.0006,
+    "min_lr": 6e-05,
+    "dtype": "bf16",
+    "eval_interval": 500,
+    "eval_steps": 40,
+    "checkpoint_interval": 1000,
+    "keep_last_n_checkpoints": 3,
+    "sample_prompt_suite": "research_capability",
+    "sample_count": 3,
+    "sample_max_new_tokens": 96
+  },
+  "evaluation": {
+    "val_bin": "data/processed/papers_small/val.manifest.json",
+    "test_bin": "data/processed/papers_small/test.manifest.json",
+    "prompt_suite": "research_capability",
+    "output_dir": "evaluation/results/papers_small",
+    "batch_size": 8,
+    "max_batches": 400
+  }
+}

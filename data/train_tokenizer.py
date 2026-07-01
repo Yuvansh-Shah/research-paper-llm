@@ -164,7 +164,7 @@ def train_tokenizer(
         backend="hf_tokenizers",
         vocab_size=tokenizer.get_vocab_size(),
         eos_token_id=int(eos_token_id),
-        tokenizer_path=str(tokenizer_path.resolve()),
+        tokenizer_path=str(tokenizer_path.relative_to(output_dir)),
         eos_token="<|endoftext|>",
         unk_token="[UNK]",
         special_tokens=["[UNK]", "<|endoftext|>"],

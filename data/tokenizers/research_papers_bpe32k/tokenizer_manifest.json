@@ -4,7 +4,7 @@
     "backend": "hf_tokenizers",
     "vocab_size": 32000,
     "eos_token_id": 1,
-    "tokenizer_path": "C:\\Users\\yuvan\\OneDrive - Dhirubhai Ambani International School\\Desktop\\jainapp\\Research-paper-maker-\\data\\tokenizers\\research_papers_bpe32k\\tokenizer.json",
+    "tokenizer_path": "tokenizer.json",
     "eos_token": "<|endoftext|>",
     "unk_token": "[UNK]",
     "bos_token": null,

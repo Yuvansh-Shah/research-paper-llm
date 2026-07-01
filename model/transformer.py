@@ -1,10 +1,34 @@
 """Transformer block: attention + feed-forward with residual connections."""
 
+import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from torch import Tensor
 
 from model.attention import CausalSelfAttention
 from model.config import GPTConfig
+
+
+class LayerNorm(nn.Module):
+    """LayerNorm with an always-learnable scale and an optional bias.
+
+    ``nn.LayerNorm`` ties both the scale (gamma) and bias (beta) to a single
+    ``elementwise_affine`` flag, so disabling the bias would also remove the
+    learnable scale. This variant keeps the scale learnable unconditionally
+    and makes only the bias optional.
+
+    Args:
+        ndim: Number of features to normalise over.
+        bias: Whether to include a learnable bias (beta) term.
+    """
+
+    def __init__(self, ndim: int, bias: bool) -> None:
+        super().__init__()
+        self.weight = nn.Parameter(torch.ones(ndim))
+        self.bias = nn.Parameter(torch.zeros(ndim)) if bias else None
+
+    def forward(self, x: Tensor) -> Tensor:
+        return F.layer_norm(x, self.weight.shape, self.weight, self.bias, 1e-5)
 
 
 class FeedForward(nn.Module):
@@ -47,9 +71,9 @@ class TransformerBlock(nn.Module):
 
     def __init__(self, config: GPTConfig) -> None:
         super().__init__()
-        self.ln_1 = nn.LayerNorm(config.n_embd, elementwise_affine=config.bias)
+        self.ln_1 = LayerNorm(config.n_embd, bias=config.bias)
         self.attn = CausalSelfAttention(config)
-        self.ln_2 = nn.LayerNorm(config.n_embd, elementwise_affine=config.bias)
+        self.ln_2 = LayerNorm(config.n_embd, bias=config.bias)
         self.ffn = FeedForward(config)
 
     def forward(self, x: Tensor) -> Tensor:
