@@ -1,1 +1,1 @@
-"""Local Flask demo server for CustomLM checkpoints."""
+"""Local Flask demo server for research-paper-llm checkpoints."""

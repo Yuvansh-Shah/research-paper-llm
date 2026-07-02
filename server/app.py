@@ -1,4 +1,4 @@
-"""Local Flask demo server for CustomLM checkpoints."""
+"""Local Flask demo server for research-paper-llm checkpoints."""
 
 from __future__ import annotations
 
@@ -240,18 +240,38 @@ def create_app(
     return app
 
 
+def find_default_eval_report() -> Path:
+    """Prefer the flat default path; otherwise the newest per-recipe report."""
+    if DEFAULT_EVAL_REPORT.exists():
+        return DEFAULT_EVAL_REPORT
+    candidates = sorted(
+        DEFAULT_EVAL_REPORT.parent.glob("*/evaluation_report.json"),
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
+    )
+    return candidates[0] if candidates else DEFAULT_EVAL_REPORT
+
+
 def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Local demo web UI for a CustomLM checkpoint")
+    parser = argparse.ArgumentParser(description="Local demo web UI for a research-paper-llm checkpoint")
     parser.add_argument("--checkpoint", type=Path, default=DEFAULT_CHECKPOINT)
     parser.add_argument("--device", default="auto", choices=["auto", "cpu", "cuda"])
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=7860)
+    parser.add_argument(
+        "--eval-report",
+        type=Path,
+        default=None,
+        help="Path to evaluation_report.json for the About panel "
+        "(default: newest report under evaluation/results/).",
+    )
     return parser.parse_args(argv)
 
 
 def main(argv: Optional[list[str]] = None) -> None:
     args = parse_args(argv)
-    app = create_app(args.checkpoint, device=args.device)
+    report_path = args.eval_report if args.eval_report else find_default_eval_report()
+    app = create_app(args.checkpoint, device=args.device, eval_report_path=report_path)
     state = app.extensions["server_state"]
 
     if state.ready:

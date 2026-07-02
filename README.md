@@ -59,7 +59,18 @@ The trainer is single-process by design; there is no multi-GPU path because this
 
 ## Evaluation
 
-_TODO_EVAL_SECTION_ (held-out perplexity, sample generations, and an honest capability summary — filled in from `evaluation/results/` after the training run)
+Held-out perplexity, every token scored exactly once over non-overlapping 512-token windows:
+
+| Split | Tokens | Loss | Perplexity |
+|---|---|---|---|
+| validation | 2,876,100 | 3.072 | **21.59** |
+| test | 2,835,344 | 3.074 | **21.63** |
+
+val ≈ test confirms the leakage-grouped split is doing its job. Per-domain test perplexity (2,000-document sample) ranges from ~16.8 (hep-ex) and ~18.3 (math) — formulaic, template-heavy abstracts — up to ~27 (physics) and ~37 (q-bio, only ~0.5% of the corpus). Full breakdown in [`evaluation/results/papers_small/evaluation_report.json`](evaluation/results/papers_small/evaluation_report.json).
+
+**What it does well:** fluent academic register and correct abstract structure ("We propose… We show… Experiments demonstrate…"); stays on topic for in-domain prompts; picks up section-style prompts (`Related Work:`, `Method:`) it was never explicitly trained on; correct LaTeX-free notation style.
+
+**Where it clearly falls short** (verbatim examples from [`generations.txt`](evaluation/results/papers_small/generations.txt)): it invents citations ("raised by Rastler (2017) and Rastler (2019)" — no such author), produces circular claims when it runs out of substance ("achieves scaling with LLMs across multiple LLMs"), and garbles numbers ("approximately 0,000 cohorts"). It is a prose engine, not a knowledge engine.
 
 ```
 python evaluation/evaluate.py --config configs/paper_small.json --checkpoint <path-to>/final.pt
@@ -112,6 +123,6 @@ Honest ones, because they matter:
 - **Trained on metadata only** — titles and abstracts, not full papers. It has never seen a proof, a method section, or a table.
 - **512-token context.** Long prompts get cropped; it cannot write a paper, only abstract-length passages.
 - **English-only, arXiv-flavored.** Out-of-domain prompts (dialogue, code, news) degrade quickly.
-- _TODO_EVAL_LIMITATIONS_ (concrete failure modes observed in evaluation)
+- **Observed failure modes** (from the eval generations): fabricated citations and author names, invented acronym expansions, malformed numbers, and occasional subword glitches ("shuffing"). Rare domains (q-bio, ~0.5% of training data) show ~1.7× worse perplexity than the corpus average.
 
 Parts of this project were built with AI coding assistance.

@@ -103,8 +103,8 @@ function renderEvaluation(evaluation) {
 function renderAbout(info) {
   const blurb =
     "<p>A decoder-only Transformer (GPT-2 style) implemented from scratch in PyTorch and " +
-    "trained on research-paper text: arXiv abstracts and DBLP publication metadata, " +
-    "tokenized with a BPE tokenizer trained on the same corpus. It autocompletes " +
+    "trained on the titles and abstracts of ~2.7M arXiv papers (566M tokens), " +
+    "tokenized with a 32k BPE tokenizer trained on the same corpus. It autocompletes " +
     "academic-sounding prose; it is a small research demo, not a general-purpose assistant.</p>";
 
   if (info.status !== "ready" || !info.model) {

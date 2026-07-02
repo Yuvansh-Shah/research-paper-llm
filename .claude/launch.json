@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "demo",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["server/app.py", "--checkpoint", "checkpoints/papers_small/final.pt"],
+      "port": 7860
+    }
+  ]
+}

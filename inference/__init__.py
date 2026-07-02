@@ -1,1 +1,1 @@
-"""CustomLM inference package."""
+"""research-paper-llm inference package."""

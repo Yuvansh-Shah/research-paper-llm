@@ -123,7 +123,7 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
     parser.add_argument("--disable_training_samples", action="store_true")
 
     parser.add_argument("--use_wandb", action="store_true")
-    parser.add_argument("--wandb_project", default="CustomLM")
+    parser.add_argument("--wandb_project", default="research-paper-llm")
     parser.add_argument("--wandb_run_name", default=None)
 
     parser.add_argument("--seed", type=int, default=42)

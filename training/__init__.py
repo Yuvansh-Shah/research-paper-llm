@@ -1,1 +1,1 @@
-"""CustomLM training package."""
+"""research-paper-llm training package."""

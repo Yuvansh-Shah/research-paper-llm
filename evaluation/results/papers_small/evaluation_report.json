@@ -1,0 +1,534 @@
+{
+  "checkpoint_path": "checkpoints/papers_small/final.pt",
+  "model_size": "small",
+  "num_parameters": 35527168,
+  "context_length": 512,
+  "tokenizer_name": "research-papers-bpe32k",
+  "timestamp": "2026-07-02T17:42:28.309040",
+  "prompt_suite": "research_capability",
+  "perplexity_results": [
+    {
+      "split": "val",
+      "loss": 3.0722617420636746,
+      "perplexity": 21.590680042532714,
+      "num_tokens": 2876100,
+      "num_batches": 704,
+      "time_seconds": 103.90268099994864
+    },
+    {
+      "split": "test",
+      "loss": 3.0738601823362703,
+      "perplexity": 21.625219051943272,
+      "num_tokens": 2835344,
+      "num_batches": 694,
+      "time_seconds": 99.9068433000939
+    }
+  ],
+  "skipped_splits": {},
+  "source_breakdowns": {
+    "val": {
+      "arxiv": {
+        "loss": 3.0316815174462226,
+        "perplexity": 20.732064624206906,
+        "token_count": 419230,
+        "document_count": 2000
+      }
+    },
+    "test": {
+      "arxiv": {
+        "loss": 3.0290896146737682,
+        "perplexity": 20.678398706892445,
+        "token_count": 422142,
+        "document_count": 2000
+      }
+    }
+  },
+  "domain_breakdowns": {
+    "val": {
+      "cs": {
+        "loss": 3.027321674371077,
+        "perplexity": 20.64187282972239,
+        "token_count": 138669,
+        "document_count": 564
+      },
+      "astro-ph": {
+        "loss": 3.090985019071155,
+        "perplexity": 21.99873648196744,
+        "token_count": 68834,
+        "document_count": 262
+      },
+      "cond-mat": {
+        "loss": 2.9809530539489892,
+        "perplexity": 19.70658914034225,
+        "token_count": 60810,
+        "document_count": 293
+      },
+      "math": {
+        "loss": 2.9088832680610683,
+        "perplexity": 18.33631038579399,
+        "token_count": 52381,
+        "document_count": 354
+      },
+      "physics": {
+        "loss": 3.297073273841823,
+        "perplexity": 27.033403657629027,
+        "token_count": 25135,
+        "document_count": 115
+      },
+      "hep-ph": {
+        "loss": 2.911163279113296,
+        "perplexity": 18.378165072573278,
+        "token_count": 14184,
+        "document_count": 86
+      },
+      "gr-qc": {
+        "loss": 3.022218890567722,
+        "perplexity": 20.536810099546944,
+        "token_count": 10393,
+        "document_count": 60
+      },
+      "quant-ph": {
+        "loss": 3.1152401684476247,
+        "perplexity": 22.538842822408412,
+        "token_count": 9433,
+        "document_count": 54
+      },
+      "hep-th": {
+        "loss": 2.8689875509260157,
+        "perplexity": 17.619170653483497,
+        "token_count": 7908,
+        "document_count": 54
+      },
+      "hep-ex": {
+        "loss": 2.820503880266725,
+        "perplexity": 16.78530632627108,
+        "token_count": 7509,
+        "document_count": 41
+      },
+      "stat": {
+        "loss": 3.2545845651232335,
+        "perplexity": 25.908848858502637,
+        "token_count": 4596,
+        "document_count": 20
+      },
+      "eess": {
+        "loss": 2.8952911654678553,
+        "perplexity": 18.088767499025234,
+        "token_count": 3700,
+        "document_count": 14
+      },
+      "q-bio": {
+        "loss": 3.616350763315518,
+        "perplexity": 37.20156250856876,
+        "token_count": 3176,
+        "document_count": 14
+      },
+      "nlin": {
+        "loss": 3.093771407421239,
+        "perplexity": 22.06011898304604,
+        "token_count": 2619,
+        "document_count": 15
+      },
+      "nucl-th": {
+        "loss": 3.2424901588858606,
+        "perplexity": 25.597384003118837,
+        "token_count": 2287,
+        "document_count": 13
+      },
+      "hep-lat": {
+        "loss": 2.8758889328457284,
+        "perplexity": 17.74118783857259,
+        "token_count": 2015,
+        "document_count": 12
+      },
+      "nucl-ex": {
+        "loss": 2.8446195584631737,
+        "perplexity": 17.195015726192135,
+        "token_count": 1984,
+        "document_count": 10
+      },
+      "q-fin": {
+        "loss": 3.345971977017647,
+        "perplexity": 28.388154895425778,
+        "token_count": 1720,
+        "document_count": 8
+      },
+      "econ": {
+        "loss": 3.37114526980156,
+        "perplexity": 29.11184889431457,
+        "token_count": 1137,
+        "document_count": 6
+      },
+      "alg-geom": {
+        "loss": 3.057158180736603,
+        "perplexity": 21.267034137722494,
+        "token_count": 374,
+        "document_count": 3
+      },
+      "chao-dyn": {
+        "loss": 2.99984332772552,
+        "perplexity": 20.082390322932703,
+        "token_count": 366,
+        "document_count": 2
+      }
+    },
+    "test": {
+      "cs": {
+        "loss": 3.01687562984935,
+        "perplexity": 20.427369214833465,
+        "token_count": 124474,
+        "document_count": 503
+      },
+      "astro-ph": {
+        "loss": 3.083140229093407,
+        "perplexity": 21.826836157035398,
+        "token_count": 75627,
+        "document_count": 291
+      },
+      "cond-mat": {
+        "loss": 2.9647260966490667,
+        "perplexity": 19.38939169472159,
+        "token_count": 60603,
+        "document_count": 282
+      },
+      "math": {
+        "loss": 2.91483771177237,
+        "perplexity": 18.44581862061457,
+        "token_count": 53493,
+        "document_count": 362
+      },
+      "physics": {
+        "loss": 3.3385454512180535,
+        "perplexity": 28.17811044633805,
+        "token_count": 24636,
+        "document_count": 112
+      },
+      "hep-ph": {
+        "loss": 2.938813459882324,
+        "perplexity": 18.893415212077564,
+        "token_count": 15678,
+        "document_count": 97
+      },
+      "gr-qc": {
+        "loss": 2.9412384372930296,
+        "perplexity": 18.939286913618847,
+        "token_count": 11734,
+        "document_count": 65
+      },
+      "quant-ph": {
+        "loss": 3.0007050749555604,
+        "perplexity": 20.099703725983222,
+        "token_count": 11441,
+        "document_count": 65
+      },
+      "hep-th": {
+        "loss": 2.988278216500586,
+        "perplexity": 19.85147311060125,
+        "token_count": 8822,
+        "document_count": 57
+      },
+      "hep-ex": {
+        "loss": 2.767751761111769,
+        "perplexity": 15.922795490082732,
+        "token_count": 7384,
+        "document_count": 36
+      },
+      "stat": {
+        "loss": 3.214771667324259,
+        "perplexity": 24.89760632501575,
+        "token_count": 5519,
+        "document_count": 22
+      },
+      "q-bio": {
+        "loss": 3.4999769849326987,
+        "perplexity": 33.11468981310722,
+        "token_count": 4893,
+        "document_count": 16
+      },
+      "hep-lat": {
+        "loss": 2.9240151132181644,
+        "perplexity": 18.615882481624457,
+        "token_count": 3535,
+        "document_count": 22
+      },
+      "nlin": {
+        "loss": 3.1522757771057073,
+        "perplexity": 23.389232738944493,
+        "token_count": 3243,
+        "document_count": 19
+      },
+      "eess": {
+        "loss": 3.133830198569847,
+        "perplexity": 22.961759426049344,
+        "token_count": 3187,
+        "document_count": 11
+      },
+      "nucl-th": {
+        "loss": 3.1522373211019534,
+        "perplexity": 23.388333299817013,
+        "token_count": 2847,
+        "document_count": 17
+      },
+      "nucl-ex": {
+        "loss": 3.057379504908686,
+        "perplexity": 21.271741567360458,
+        "token_count": 1725,
+        "document_count": 8
+      },
+      "econ": {
+        "loss": 3.164190352023433,
+        "perplexity": 23.669572251401828,
+        "token_count": 987,
+        "document_count": 4
+      },
+      "q-fin": {
+        "loss": 3.386163853046273,
+        "perplexity": 29.55236732150844,
+        "token_count": 952,
+        "document_count": 4
+      },
+      "cmp-lg": {
+        "loss": 3.666073521806134,
+        "perplexity": 39.09808629009306,
+        "token_count": 576,
+        "document_count": 3
+      },
+      "chao-dyn": {
+        "loss": 2.961622457222745,
+        "perplexity": 19.32930730258026,
+        "token_count": 542,
+        "document_count": 3
+      },
+      "dg-ga": {
+        "loss": 2.9806172847747803,
+        "perplexity": 19.699973385925475,
+        "token_count": 244,
+        "document_count": 1
+      }
+    }
+  },
+  "category_breakdowns": {
+    "val": {
+      "cs.LG": {
+        "loss": 2.9388241514336126,
+        "perplexity": 18.89361721307517,
+        "token_count": 42456,
+        "document_count": 165
+      },
+      "cs.CV": {
+        "loss": 2.8894840897268144,
+        "perplexity": 17.984029062446844,
+        "token_count": 29736,
+        "document_count": 111
+      },
+      "hep-ph": {
+        "loss": 2.9089199459732336,
+        "perplexity": 18.33698293570954,
+        "token_count": 25094,
+        "document_count": 142
+      },
+      "hep-th": {
+        "loss": 2.926796043609716,
+        "perplexity": 18.667724005407656,
+        "token_count": 23650,
+        "document_count": 135
+      },
+      "cs.AI": {
+        "loss": 2.9434524374137565,
+        "perplexity": 18.98126494967321,
+        "token_count": 21891,
+        "document_count": 84
+      },
+      "quant-ph": {
+        "loss": 2.9905745563615396,
+        "perplexity": 19.897111219853684,
+        "token_count": 21659,
+        "document_count": 117
+      },
+      "cond-mat.mtrl-sci": {
+        "loss": 3.058369445091241,
+        "perplexity": 21.29280974548843,
+        "token_count": 18145,
+        "document_count": 76
+      },
+      "gr-qc": {
+        "loss": 2.9593234791995777,
+        "perplexity": 19.28492069136015,
+        "token_count": 17834,
+        "document_count": 94
+      },
+      "stat.ML": {
+        "loss": 2.9379080224536596,
+        "perplexity": 18.876316149023268,
+        "token_count": 16804,
+        "document_count": 72
+      },
+      "astro-ph.GA": {
+        "loss": 3.0655939347276626,
+        "perplexity": 21.447196439867078,
+        "token_count": 15906,
+        "document_count": 54
+      },
+      "cond-mat.mes-hall": {
+        "loss": 2.914968809859222,
+        "perplexity": 18.448236990664533,
+        "token_count": 15404,
+        "document_count": 75
+      },
+      "cs.CL": {
+        "loss": 2.9230807825005836,
+        "perplexity": 18.5984972138466,
+        "token_count": 15159,
+        "document_count": 58
+      }
+    },
+    "test": {
+      "cs.LG": {
+        "loss": 2.965660001397195,
+        "perplexity": 19.40750799782263,
+        "token_count": 40183,
+        "document_count": 159
+      },
+      "cs.CV": {
+        "loss": 2.8787573367389685,
+        "perplexity": 17.792149785621312,
+        "token_count": 27570,
+        "document_count": 102
+      },
+      "hep-ph": {
+        "loss": 2.9392473393042233,
+        "perplexity": 18.901614454760196,
+        "token_count": 26654,
+        "document_count": 155
+      },
+      "quant-ph": {
+        "loss": 3.0216642319364864,
+        "perplexity": 20.52542233901897,
+        "token_count": 26366,
+        "document_count": 137
+      },
+      "hep-th": {
+        "loss": 2.9390298425218706,
+        "perplexity": 18.897503861471623,
+        "token_count": 22370,
+        "document_count": 131
+      },
+      "cond-mat.mtrl-sci": {
+        "loss": 2.9991732623932656,
+        "perplexity": 20.068938316753318,
+        "token_count": 19876,
+        "document_count": 85
+      },
+      "astro-ph": {
+        "loss": 3.052723695650913,
+        "perplexity": 21.172934587750277,
+        "token_count": 19753,
+        "document_count": 85
+      },
+      "cs.AI": {
+        "loss": 3.087763111068158,
+        "perplexity": 21.927972635357015,
+        "token_count": 18438,
+        "document_count": 73
+      },
+      "gr-qc": {
+        "loss": 2.9475096739113833,
+        "perplexity": 19.058432868991357,
+        "token_count": 17481,
+        "document_count": 98
+      },
+      "astro-ph.GA": {
+        "loss": 3.012058833901966,
+        "perplexity": 20.32921133859824,
+        "token_count": 16830,
+        "document_count": 57
+      },
+      "astro-ph.SR": {
+        "loss": 3.0744029644369686,
+        "perplexity": 21.63696001987371,
+        "token_count": 16039,
+        "document_count": 56
+      },
+      "cond-mat.mes-hall": {
+        "loss": 2.894638948150635,
+        "perplexity": 18.076973538146046,
+        "token_count": 15625,
+        "document_count": 70
+      }
+    }
+  },
+  "generation_results": [
+    {
+      "prompt": "Title: Scaling Tokenization Strategies for Scientific Abstract Modeling\nAbstract:",
+      "completion": "\nThis paper focuses on the scaling of Large Language Models (LLMs) with a single token per model, a challenging problem with multiple LLMs. To address this problem, we propose a unified framework to handle multiple LLMs, and we propose the tokenization-level scaling strategy, which achieves scaling with LLMs across multiple LLMs. Additionally, we propose a scaling strategy to enhance the scaling of large language models using tokenization techniques. Our experiments demonstrate the superior performance of our method compared to existing",
+      "tokens_generated": 100,
+      "time_seconds": 1.016399099957198
+    },
+    {
+      "prompt": "Title: Domain-Adaptive Pretraining for Mixed DBLP and arXiv Corpora\nAbstract:",
+      "completion": "\nThe problem of mixed DBLP and arXiv Corpora was raised by Rastler (2017) and Rastler (2019) in the literature. The present paper presents a novel training strategy based on a domain-adaptive pretraining mechanism for the arXiv Corpora. We study the performance of a multi-domain model for this task in a mixed DBLP scenario. We find that the performance of our proposed framework is significantly better than that of the state-of",
+      "tokens_generated": 100,
+      "time_seconds": 0.6751474000047892
+    },
+    {
+      "prompt": "Title: Improving Validation Protocols for Scientific Language Models\nAbstract:",
+      "completion": " The World Wide Web\nYear: 2024\nCategories: cs.SE\n\nAbstract:\nThe rise of Large Language Models (LLMs) has revolutionized the field of scientific research, offering a scalable solution to the problem of evaluating and comparing scientific code. This paper investigates the integration of LLMs with the open-source community, offering a comprehensive analysis of the existing frameworks for evaluating and analyzing scientific language models, particularly for scientific tasks. By leveraging the strengths of existing models, this work highlights",
+      "tokens_generated": 100,
+      "time_seconds": 0.6322134000947699
+    },
+    {
+      "prompt": "Title: A Controlled Study of Corpus Shuffling in Research-Paper Pretraining\nAbstract:",
+      "completion": "\nThis study investigates the effects of the corpus shuffling on the corpus shuffing strategies. In this study, we introduce a new dataset, Co-Pretraining, which contains about 5,000 cohorts, paired with a set of approximately 0,000 cohorts. This dataset provides a more comprehensive, quantitative, and qualitative understanding of the data. We employ Co-Pretraining to create a dataset. In addition, we propose a method to study the effect",
+      "tokens_generated": 100,
+      "time_seconds": 0.6045967000536621
+    },
+    {
+      "prompt": "Introduction:\nScientific language models trained on research corpora benefit from",
+      "completion": " a single training step. However, there is a strong need to take into account multiple tasks and perform well on tasks, as a result the models may struggle to accurately learn the correct answer. We introduce a novel method for automatically learning a single task that predicts the final answer for each of the tasks as a whole. This approach, called the Self-supervised Domain Adaptation (SSDA) method, is evaluated on a large-scale dataset of scientific papers, where it is a representative set of",
+      "tokens_generated": 100,
+      "time_seconds": 0.6234038999537006
+    },
+    {
+      "prompt": "Related Work:\nRecent work on document-level pretraining for scientific text has",
+      "completion": " recently received considerable attention. However, the existing methods rely on specific pretraining datasets, which is expensive to collect and often requires a large amount of labeled training data. In this work, we propose a novel approach to automatically identify the top-performing pretraining dataset. The key insight is that the top-performing pretraining dataset is composed of multiple corpora of different sizes. It is a novel corpus of large scientific text, which has the potential to address the challenges in the",
+      "tokens_generated": 100,
+      "time_seconds": 0.6271532999817282
+    },
+    {
+      "prompt": "Method:\nWe train a decoder-only transformer on a mixed DBLP and arXiv corpus using",
+      "completion": " different decoding strategies: (1) the encoder is a mixture of a Gaussian mixture of DBLP with a mixture of DBLP and a mixture of DBLP with a mixture of DBLP and DBLP. We show that the transformer decoder is a combination of DBLP and DBLP with a mixture of DBLP and DBLP with a mixture of DBLP and DBLP. Experimental results show that the proposed decoding strategies outperform the DBLP",
+      "tokens_generated": 100,
+      "time_seconds": 0.6023963999468833
+    },
+    {
+      "prompt": "Results:\nHeld-out perplexity improves when the tokenizer is trained directly on",
+      "completion": " the training corpus. However, for a single language, the training corpus is extremely sparse, making it difficult to generalize across languages. We propose a novel method for learning to learn to solve this problem efficiently. Our method achieves state-of-the-art results on the I3K benchmark, and the KITTI dataset for the English language is released.<|endoftext|>Title: A New Approach to the Dynamics of a Self-Dual Quantum Soil\nYear: 2009\nCategories: hep-th",
+      "tokens_generated": 100,
+      "time_seconds": 0.600373400026001
+    },
+    {
+      "prompt": "Ablation Study:\nRemoving deterministic document shuffling causes",
+      "completion": " noise in the document representation. We present a novel method to remove such noise using a transformer encoder-decoder architecture. The method utilizes the similarity between the documents, instead of the original document, and we present an iterative technique to reduce the noise. Experimental results using the document-level corpus illustrate the effectiveness of our method.<|endoftext|>Title: The Structure of the Cosmic Web\nYear: 2007\nCategories: astro-ph\n\nAbstract:\nThe cosmic web is expected to have been shaped by",
+      "tokens_generated": 100,
+      "time_seconds": 0.6983476999448612
+    },
+    {
+      "prompt": "Discussion:\nThe difference between DBLP and arXiv validation loss suggests",
+      "completion": " that DBLP may not be an ideal choice, especially when one does not know of DBLP. Thus, the two metrics do not capture the same effect. It is thus unclear why DBLP is more suitable for other tasks. The paper gives a new perspective on the effect of the different loss functions in the DBLP. The results suggest that DBLP may improve the accuracy of DBLP in the considered test set.<|endoftext|>Title: A Survey on Privacy and Trustworth",
+      "tokens_generated": 100,
+      "time_seconds": 0.6072711000451818
+    },
+    {
+      "prompt": "Conclusion:\nThis work shows that capability-first scientific language modeling requires",
+      "completion": " significant attention to computational resources. The key idea of this work is to design a self-supervised learning framework that utilizes the knowledge encoded in Transformer-based models to efficiently address computational resources while maintaining performance. The framework is evaluated on two publicly available datasets for knowledge discovery, a natural language processing dataset (NLP-Next). The results show that the proposed approach achieves the state-of-the-art performance while not being computationally demanding.<|endoftext|>Title: An extension of the theory of higher degree",
+      "tokens_generated": 100,
+      "time_seconds": 0.5809357999823987
+    },
+    {
+      "prompt": "Future Work:\nThe most promising next experiment for this recipe is",
+      "completion": " to create a large code that can be used as a backbone to perform machine learning (ML) tasks. The goal is to train a model that can be trained on a single dataset and apply it to a downstream task. The key idea is to model the joint distribution of the data, and a training set that does not have to be labeled. The dataset has been created by combining ML with a new autoencoder and a simple yet effective neural architecture. The model has been trained in a supervised manner",
+      "tokens_generated": 100,
+      "time_seconds": 0.6266744000604376
+    }
+  ]
+}

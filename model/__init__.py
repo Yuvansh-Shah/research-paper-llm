@@ -1,1 +1,1 @@
-"""CustomLM model package."""
+"""research-paper-llm model package."""

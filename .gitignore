@@ -27,8 +27,11 @@ data/processed/
 dblp-v10.csv
 arxiv-metadata-oai-snapshot.json
 
-# ── Evaluation outputs ───────────────────────────────────────────────────────
-evaluation/results/
+# ── Evaluation outputs (the shipped model's report + generations are kept) ───
+evaluation/results/**
+!evaluation/results/papers_small/
+!evaluation/results/papers_small/evaluation_report.json
+!evaluation/results/papers_small/generations.txt
 
 # ── Jupyter / IPython ────────────────────────────────────────────────────────
 .ipynb_checkpoints/

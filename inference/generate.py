@@ -1,4 +1,4 @@
-"""Text generation CLI for CustomLM checkpoints."""
+"""Text generation CLI for research-paper-llm checkpoints."""
 
 from __future__ import annotations
 
@@ -187,7 +187,7 @@ def stream_generate(
 
 def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
     config_path, defaults = load_config_defaults(argv, section="inference")
-    parser = argparse.ArgumentParser(description="Generate text with a CustomLM checkpoint")
+    parser = argparse.ArgumentParser(description="Generate text with a research-paper-llm checkpoint")
     parser.add_argument("--config", type=Path, default=config_path, help="Optional JSON preset / recipe file.")
     parser.add_argument("--checkpoint", required=True)
     parser.add_argument("--tokenizer", default=None, help="Optional tokenizer override.")

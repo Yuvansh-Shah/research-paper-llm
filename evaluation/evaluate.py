@@ -481,7 +481,7 @@ def run_evaluation(
 
 def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
     config_path, defaults = load_config_defaults(argv, section="evaluation")
-    parser = argparse.ArgumentParser(description="Evaluate a trained CustomLM checkpoint")
+    parser = argparse.ArgumentParser(description="Evaluate a trained research-paper-llm checkpoint")
     parser.add_argument("--config", type=Path, default=config_path, help="Optional JSON preset / recipe file.")
     parser.add_argument("--checkpoint", required=True)
     parser.add_argument("--tokenizer", default=None, help="Optional tokenizer override.")

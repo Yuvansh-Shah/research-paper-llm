@@ -1,1 +1,1 @@
-"""CustomLM test suite."""
+"""research-paper-llm test suite."""
