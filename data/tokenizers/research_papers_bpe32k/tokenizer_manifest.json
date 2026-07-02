@@ -19,7 +19,7 @@
     "model_type": "bpe",
     "vocab_size": 32000,
     "min_frequency": 2,
-    "max_records_per_source": 5000,
+    "max_records_per_source": 200000,
     "quality_config": {
       "min_title_chars": 12,
       "min_abstract_chars": 80,
@@ -36,21 +36,19 @@
       "include_authors": false
     },
     "stats": {
-      "seen_records": 10000,
-      "kept_records": 9772,
-      "dropped_records": 228,
+      "seen_records": 200000,
+      "kept_records": 199003,
+      "dropped_records": 997,
       "seen_by_source": {
-        "dblp": 5000,
-        "arxiv": 5000
+        "arxiv": 200000
       },
       "kept_by_source": {
-        "dblp": 4796,
-        "arxiv": 4976
+        "arxiv": 199003
       }
     },
     "inputs": {
-      "dblp": "C:\\Users\\yuvan\\OneDrive - Dhirubhai Ambani International School\\Desktop\\jainapp\\Research-paper-maker-\\dblp-v10.csv",
-      "arxiv": "C:\\Users\\yuvan\\OneDrive - Dhirubhai Ambani International School\\Desktop\\jainapp\\Research-paper-maker-\\arxiv-metadata-oai-snapshot.json"
+      "dblp": null,
+      "arxiv": "C:\\Users\\yuvan\\llm-data\\research-paper-llm\\raw\\arxiv-metadata-oai-snapshot.json"
     }
   }
 }

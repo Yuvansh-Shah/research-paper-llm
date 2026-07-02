@@ -86,6 +86,12 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
 
     parser.add_argument("--model_size", default="base", choices=["debug", "small", "base", "large", "xl"])
     parser.add_argument("--context_length", type=int, default=None)
+    parser.add_argument(
+        "--dropout",
+        type=float,
+        default=None,
+        help="Override the preset's dropout (0.0 is typical for <1-epoch pretraining).",
+    )
 
     parser.add_argument("--micro_batch_size", type=int, default=8)
     parser.add_argument("--grad_accum_steps", type=int, default=8)
@@ -192,6 +198,8 @@ def build_model_config(args: argparse.Namespace, tokenizer_spec: TokenizerSpec) 
         vocab_size=tokenizer_spec.vocab_size,
         context_length=args.context_length,
     )
+    if args.dropout is not None:
+        config.dropout = args.dropout
     return config
 
 
